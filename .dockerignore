@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
+.git
+.gitignore
+.env
+*.session
+*.session-journal
+venv/
+env/
+.vscode/
+.idea/
+*.md
