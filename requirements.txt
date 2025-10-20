@@ -1,0 +1,13 @@
+pyrogram==2.0.106
+tgcrypto
+pymongo[srv]
+motor
+marshmallow
+python-dotenv
+aiohttp
+requests
+pyshorteners
+imdbpy
+aiofiles
+psutil
+humanize
