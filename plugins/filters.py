@@ -67,25 +67,24 @@ async def auto_filter(client, message):
     # Apply filters if user has set preferences
     filtered_files = filter_files_by_preference(files, user_id)
     
-    # Build file buttons WITHOUT folder icon
-    btn = []
-    for file in filtered_files[:10]:
+    # Build text-style file list (NO BUTTONS - just formatted text)
+    file_text = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>\n\n"
+    
+    for idx, file in enumerate(filtered_files[:10], 1):
         try:
             file_id = str(file.get('_id', ''))
             file_name = file.get('file_name', 'Unknown')
+            file_size = get_size(file.get('file_size', 0))
             
-            if file_id:
-                # NO FOLDER ICON - just file name
-                btn.append([InlineKeyboardButton(file_name, callback_data=f"file#{file_id}")])
+            # Format: 📁 SIZE ▷ FILENAME
+            file_text += f"<b>📁 {file_size}</b> ▷ <code>{file_name}</code>\n\n"
+            
         except Exception as e:
             logger.error(f"Error processing file: {e}")
             continue
     
-    if not btn:
-        # Show "no files match filter" message
-        btn.append([InlineKeyboardButton("❌ No files match your filters", callback_data="nofiles")])
-    
     # Add filter buttons (Single row - inline horizontal layout)
+    btn = []
     filter_row = [
         InlineKeyboardButton("LANGUAGES", callback_data=f"lang#{search}"),
         InlineKeyboardButton("Qualitys", callback_data=f"qual#{search}"),
@@ -108,22 +107,16 @@ async def auto_filter(client, message):
     
     # Build caption with filter info
     filter_info = get_filter_info(user_id)
-    caption = f"<b>Found {len(filtered_files)} results for:</b> <code>{search}</code>{filter_info}\n\nJoin: @movies_magic_club3"
     
     try:
-        await message.reply_photo(
-            photo=random.choice(PICS),
-            caption=caption,
+        await message.reply(
+            file_text + filter_info + "\n\nJoin: @movies_magic_club3",
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
         )
-    except Exception:
-        await message.reply(
-            caption,
-            reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
-        )
+    except Exception as e:
+        logger.error(f"Send message error: {e}")
 
 
 @Client.on_callback_query(filters.regex(r"^file#"))
@@ -241,4 +234,4 @@ async def close_callback(client, query):
         await query.answer("Closed!", show_alert=False)
     except:
         await query.answer("Already closed!", show_alert=False)
-    
+            
