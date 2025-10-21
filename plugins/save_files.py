@@ -1,5 +1,5 @@
 from pyrogram import Client, filters
-from info import CHANNELS, DELETE_CHANNELS, DB_URI, DB_NAME
+from info import CHANNELS, DELETE_CHANNELS, DATABASE_URI, DATABASE_NAME
 import logging
 import re
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 
 # Initialize MongoDB directly
 try:
-    mongo_client = AsyncIOMotorClient(DB_URI)
-    db = mongo_client[DB_NAME]
+    mongo_client = AsyncIOMotorClient(DATABASE_URI)
+    db = mongo_client[DATABASE_NAME]
     files_collection = db.files
 except Exception as e:
     logger.error(f"Database connection error: {e}")
