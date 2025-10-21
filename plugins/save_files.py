@@ -1,13 +1,18 @@
 from pyrogram import Client, filters
-from database.database import Database
-from info import CHANNELS, DELETE_CHANNELS
+from info import CHANNELS, DELETE_CHANNELS, DB_URI, DB_NAME
 import logging
 import re
+from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
 
-# Initialize database
-db = Database()
+# Initialize MongoDB directly
+try:
+    mongo_client = AsyncIOMotorClient(DB_URI)
+    db = mongo_client[DB_NAME]
+    files_collection = db.files
+except Exception as e:
+    logger.error(f"Database connection error: {e}")
 
 # Robust parsing that handles multiple formats
 def parse_channels(channel_var):
@@ -78,14 +83,24 @@ async def save_files(client, message):
         file_size = media.file_size
         file_type = message.media.value if message.media else 'document'
         
-        # Save using your Database class
-        # Note: Check what method your Database class has
-        # It might be save_file(), add_file(), insert(), etc.
-        result = await db.save_file(file_id, file_name, file_type, file_size, message.caption or '')
+        # Prepare file document for MongoDB
+        file_document = {
+            'file_id': file_id,
+            'file_ref': file_ref,
+            'file_name': file_name,
+            'file_size': file_size,
+            'file_type': file_type,
+            'caption': message.caption or '',
+            'chat_id': message.chat.id,
+            'message_id': message.id
+        }
         
-        if result:
+        # Insert directly into MongoDB
+        result = await files_collection.insert_one(file_document)
+        
+        if result.inserted_id:
             logger.info(f"✅ Auto-saved: {file_name[:50]} (ID: {file_id[:20]}...)")
         
     except Exception as e:
         logger.error(f"❌ Error saving file: {e}")
-        
+    
