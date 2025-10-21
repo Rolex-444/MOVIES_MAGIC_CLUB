@@ -54,9 +54,9 @@ logger.info(f"✅ Auto-save enabled for channels: {SAVE_CHANNELS}")
 logger.info(f"⛔ Delete channels (skip save): {DELETE_CHANNEL_LIST}")
 
 
-@Client.on_message(filters.channel & filters.incoming)
+@Client.on_message(filters.channel)  # REMOVED "& filters.incoming" to catch ALL channel messages
 async def save_files(client, message):
-    """Save files from storage channels only (exclude DELETE_CHANNELS)"""
+    """Save files from storage channels (catches both incoming and copied messages)"""
     
     # Check if from a monitored channel
     if message.chat.id not in SAVE_CHANNELS:
@@ -83,6 +83,12 @@ async def save_files(client, message):
         file_size = media.file_size
         file_type = message.media.value if message.media else 'document'
         
+        # Check if file already exists in database (avoid duplicates)
+        existing = await files_collection.find_one({'file_id': file_id})
+        if existing:
+            logger.info(f"⚠️ File already in database: {file_name[:30]}...")
+            return
+        
         # Prepare file document for MongoDB
         file_document = {
             'file_id': file_id,
@@ -103,4 +109,3 @@ async def save_files(client, message):
         
     except Exception as e:
         logger.error(f"❌ Error saving file: {e}")
-    
