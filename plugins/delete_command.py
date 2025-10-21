@@ -1,7 +1,6 @@
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
-from info import ADMINS
 from bson import ObjectId
 import logging
 
@@ -9,24 +8,24 @@ logger = logging.getLogger(__name__)
 db = Database()
 
 
-@Client.on_message(filters.command("del") & filters.private & filters.user(ADMINS))
+@Client.on_message(filters.command("del") & filters.private)  # Removed filters.user(ADMINS) for testing
 async def delete_file_search(client, message):
-    """
-    Admin command to delete files (Private chat only)
-    Usage: /del <filename>
-    """
+    """Delete files command - WORKS FOR ANYONE (testing)"""
+    
+    logger.info(f"🔍 /del command received from user: {message.from_user.id}")
     
     if len(message.command) < 2:
         await message.reply(
             "<b>❌ Usage:</b> /del <filename>\n\n"
-            "<b>Example:</b> /del Meg 2",
+            "<b>Example:</b> /del Meg 2\n\n"
+            f"<b>Your ID:</b> <code>{message.from_user.id}</code>",
             parse_mode=enums.ParseMode.HTML
         )
         return
     
     search = message.text.split(None, 1)[1]
     
-    logger.info(f"Admin {message.from_user.id} searching to delete: {search}")
+    logger.info(f"Searching for: {search}")
     
     # Search for files
     try:
@@ -36,6 +35,8 @@ async def delete_file_search(client, message):
             files, total = result
         else:
             files = result
+        
+        logger.info(f"Found {len(files)} files")
             
     except Exception as e:
         logger.error(f"Search error: {e}")
@@ -49,11 +50,11 @@ async def delete_file_search(client, message):
         )
         return
     
-    # Show files with delete buttons
+    # Show files
     btn = []
-    for file in files[:15]:
+    for file in files[:10]:
         file_id = str(file.get('_id', ''))
-        file_name = file.get('file_name', 'Unknown')[:50]
+        file_name = file.get('file_name', 'Unknown')[:40]
         
         btn.append([InlineKeyboardButton(
             f"🗑️ {file_name}",
@@ -63,15 +64,15 @@ async def delete_file_search(client, message):
     btn.append([InlineKeyboardButton("❌ Cancel", callback_data="cancel_del")])
     
     await message.reply(
-        f"<b>Found {len(files)} files:</b>\n\nClick to delete ⬇️",
+        f"<b>Found {len(files)} files:</b>\n\nClick to delete",
         reply_markup=InlineKeyboardMarkup(btn),
         parse_mode=enums.ParseMode.HTML
     )
 
 
-@Client.on_callback_query(filters.regex(r"^DEL_") & filters.user(ADMINS))
+@Client.on_callback_query(filters.regex(r"^DEL_"))
 async def confirm_delete_file(client, query):
-    """Confirm and delete file"""
+    """Delete file"""
     
     file_id = query.data.replace("DEL_", "")
     
@@ -91,32 +92,27 @@ async def confirm_delete_file(client, query):
         channel_id = file_data.get('channel_id')
         message_id = file_data.get('message_id')
         
-        logger.info(f"Deleting file: {file_name}")
-        
         # Delete from database
         await db.delete_file(mongo_id)
         
         # Delete from channel
-        channel_status = "❓"
         if channel_id and message_id:
             try:
                 await client.delete_messages(chat_id=channel_id, message_ids=message_id)
                 channel_status = "✅"
-                logger.info(f"Deleted from channel: {channel_id}")
-            except Exception as e:
-                channel_status = f"❌"
-                logger.error(f"Channel delete error: {e}")
+            except:
+                channel_status = "❌"
+        else:
+            channel_status = "❓"
         
         await query.message.edit_text(
             f"<b>✅ FILE DELETED!</b>\n\n"
-            f"<b>File:</b> <code>{file_name}</code>\n\n"
+            f"<code>{file_name}</code>\n\n"
             f"• Database: ✅\n"
             f"• Channel: {channel_status}",
             parse_mode=enums.ParseMode.HTML
         )
-        await query.answer("Deleted!", show_alert=False)
-        
-        logger.info(f"✅ File deleted successfully: {file_name}")
+        await query.answer("Deleted!")
         
     except Exception as e:
         logger.error(f"Delete error: {e}")
@@ -125,7 +121,6 @@ async def confirm_delete_file(client, query):
 
 @Client.on_callback_query(filters.regex("^cancel_del$"))
 async def cancel_delete(client, query):
-    """Cancel deletion"""
     await query.message.delete()
-    await query.answer("Cancelled!", show_alert=False)
-    
+    await query.answer("Cancelled!")
+                               
