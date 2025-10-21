@@ -7,28 +7,25 @@ logger = logging.getLogger(__name__)
 db = Database()
 
 
-# Convert DELETE_CHANNELS to a filter that works
-def delete_channel_filter(_, __, message):
-    """Custom filter to check if message is from DELETE_CHANNELS"""
-    return message.chat.id in DELETE_CHANNELS
-
-delete_filter = filters.create(delete_channel_filter)
-
-
-@Client.on_message(filters.channel & delete_filter)  # Use custom filter
+@Client.on_message(filters.channel)  # Listen to ALL channels
 async def auto_delete_file(client, message):
-    """
-    Auto-delete files forwarded to DELETE_CHANNELS
-    """
+    """Auto-delete files forwarded to DELETE_CHANNELS"""
+    
+    # Check if message is from DELETE_CHANNELS
+    if message.chat.id not in DELETE_CHANNELS:
+        return  # Not a delete channel, ignore
+    
+    logger.info(f"🔍 Message received in DELETE_CHANNEL: {message.chat.id}")
     
     # Check if message has media
     if not message.media:
-        logger.info(f"Non-media message in DELETE_CHANNELS: {message.text}")
+        logger.info(f"Non-media message in DELETE_CHANNELS")
         return
     
     # Get file details
     media = message.document or message.video or message.audio
     if not media:
+        logger.info(f"No media found in message")
         return
     
     file_id = media.file_id
@@ -48,9 +45,13 @@ async def auto_delete_file(client, message):
         original_channel = file_data.get('channel_id')
         original_message_id = file_data.get('message_id')
         
+        logger.info(f"Found file in DB - Channel: {original_channel}, Msg ID: {original_message_id}")
+        
         # Step 2: Delete from MongoDB database
         delete_result = await db.delete_file_by_file_id(file_id)
         db_deleted = delete_result.deleted_count if delete_result else 0
+        
+        logger.info(f"Database delete result: {db_deleted} records deleted")
         
         # Step 3: Delete from original storage channel
         channel_deleted = False
@@ -86,25 +87,4 @@ async def auto_delete_file(client, message):
             await message.delete()
         except:
             pass
-
-
-@Client.on_message(filters.channel & delete_filter & filters.command("status"))
-async def delete_channel_status(client, message):
-    """Status command for DELETE_CHANNELS"""
     
-    total_files = await db.total_files_count()
-    
-    status_msg = (
-        f"<b>🗑️ DELETE CHANNEL STATUS</b>\n\n"
-        f"<b>Total files in database:</b> {total_files}\n\n"
-        f"<b>How to use:</b>\n"
-        f"1. Forward any file here\n"
-        f"2. Bot will auto-delete it from:\n"
-        f"   • MongoDB Database ✅\n"
-        f"   • Storage Channel ✅\n"
-        f"   • This channel ✅\n\n"
-        f"<b>Status:</b> Active ✅"
-    )
-    
-    await message.reply(status_msg, parse_mode=enums.ParseMode.HTML)
-        
