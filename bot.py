@@ -1,8 +1,7 @@
 import asyncio
 import logging
 from aiohttp import web
-from pyrogram import Client, idle, __version__
-from pyrogram.raw.all import layer
+from pyrogram import Client, idle
 from info import API_ID, API_HASH, BOT_TOKEN
 
 # Setup logging
@@ -43,13 +42,11 @@ async def main():
     # Start bot
     await app.start()
     me = await app.get_me()
-    logger.info(f"MOVIES MAGIC CLUB Started ⚡")
-    logger.info(f"Pyrogram version: {__version__}")
-    logger.info(f"Layer: {layer}")
+    logger.info("MOVIES MAGIC CLUB Started ⚡")
+    logger.info(f"Bot Username: @{me.username}")
     
     # Keep running
     await idle()
 
 if __name__ == "__main__":
     app.run(main())
-    
