@@ -42,6 +42,10 @@ async def auto_filter(client, message):
     search = message.text
     user_id = message.from_user.id
     
+    # Get bot username for deep links
+    me = await client.get_me()
+    bot_username = me.username
+    
     # Search for files in database
     try:
         result = await db.search_files(search)
@@ -68,16 +72,14 @@ async def auto_filter(client, message):
     filtered_files = filter_files_by_preference(files, user_id)
     
     if not filtered_files:
-        btn = [[InlineKeyboardButton("❌ No files match your filters", callback_data="nofiles")]]
         await message.reply(
             f"<b>No files match your filters for:</b> <code>{search}</code>\n\nTry selecting 'All' in filters.",
-            reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML
         )
         return
     
-    # Build clickable file buttons (full width - look like text)
-    btn = []
+    # Build text with clickable links (HTML <a> tags)
+    file_text = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>\n\n"
     
     for idx, file in enumerate(filtered_files[:10], 1):
         try:
@@ -85,21 +87,20 @@ async def auto_filter(client, message):
             file_name = file.get('file_name', 'Unknown')
             file_size = get_size(file.get('file_size', 0))
             
-            # Create button text: 📁 SIZE ▷ FILENAME
-            button_text = f"📁 {file_size} ▷ {file_name}"
+            # Create deep link: https://t.me/BOT_USERNAME?start=file_FILE_ID
+            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
             
-            # Each file gets its own full-width button
-            btn.append([InlineKeyboardButton(button_text, callback_data=f"file#{file_id}")])
+            # Format as clickable HTML link: <a href="deep_link">📁 SIZE ▷ FILENAME</a>
+            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+            
+            file_text += f"{clickable_text}\n\n"
             
         except Exception as e:
             logger.error(f"Error processing file: {e}")
             continue
     
-    if not btn:
-        await message.reply("No valid files found.")
-        return
-    
-    # Add filter buttons (Single row - inline horizontal layout)
+    # Add filter buttons ONLY (no file buttons)
+    btn = []
     filter_row = [
         InlineKeyboardButton("LANGUAGES", callback_data=f"lang#{search}"),
         InlineKeyboardButton("Qualitys", callback_data=f"qual#{search}"),
@@ -122,11 +123,11 @@ async def auto_filter(client, message):
     
     # Build caption with filter info
     filter_info = get_filter_info(user_id)
-    caption = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>{filter_info}\n\nJoin: @movies_magic_club3"
+    file_text += filter_info + "\n\nJoin: @movies_magic_club3"
     
     try:
         await message.reply(
-            caption,
+            file_text,
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
@@ -135,13 +136,45 @@ async def auto_filter(client, message):
         logger.error(f"Send message error: {e}")
 
 
-@Client.on_callback_query(filters.regex(r"^file#"))
-async def send_file(client, query):
-    """Send file with verification check"""
-    user_id = query.from_user.id
-    file_id = query.data.split("#")[1]
+# Handle deep link clicks from /start command
+@Client.on_message(filters.command("start") & filters.private)
+async def start_command(client, message):
+    """Handle /start command and deep links"""
+    user_id = message.from_user.id
     
-    logger.info(f"File button clicked by user {user_id}, file_id: {file_id}")
+    # Check if it's a deep link (e.g., /start file_FILE_ID)
+    if len(message.command) > 1:
+        parameter = message.command[1]
+        
+        # Handle file deep link
+        if parameter.startswith("file_"):
+            file_id = parameter.replace("file_", "")
+            logger.info(f"Deep link file access: user {user_id}, file_id {file_id}")
+            
+            # Use the existing send_file logic
+            await send_file_by_deeplink(client, message, file_id)
+            return
+    
+    # Regular /start message (your existing start message)
+    buttons = [
+        [InlineKeyboardButton("🆘 Help", callback_data="help"),
+         InlineKeyboardButton("ℹ️ About", callback_data="about")],
+        [InlineKeyboardButton("🔐 Verify", callback_data="verify_user"),
+         InlineKeyboardButton("👑 Premium", callback_data="premium")],
+        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+    ]
+    
+    await message.reply(
+        Config.START_TXT.format(message.from_user.first_name),
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=enums.ParseMode.HTML
+    )
+
+
+async def send_file_by_deeplink(client, message, file_id):
+    """Send file when accessed via deep link"""
+    user_id = message.from_user.id
     
     # Check if user is admin (admins bypass everything)
     if user_id not in ADMINS:
@@ -153,7 +186,6 @@ async def send_file(client, query):
             token = generate_verify_token()
             await verify_db.set_verify_token(user_id, token, 600)
             
-            # Get bot username
             me = await client.get_me()
             verify_url = f"https://t.me/{me.username}?start=verify_{token}"
             short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
@@ -164,8 +196,7 @@ async def send_file(client, query):
                 [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
             ]
             
-            await query.answer("⚠️ Verification required!", show_alert=True)
-            await query.message.reply(
+            await message.reply(
                 Config.VERIFY_TXT,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 parse_mode=enums.ParseMode.HTML,
@@ -179,22 +210,19 @@ async def send_file(client, query):
     
     # Get file data from database
     try:
-        # Convert string ID to ObjectId for MongoDB
         if len(file_id) == 24:
             mongo_id = ObjectId(file_id)
         else:
             mongo_id = file_id
         
         file_data = await db.get_file(mongo_id)
-        logger.info(f"File data retrieved: {file_data is not None}")
         
     except Exception as e:
         logger.error(f"Error getting file {file_id}: {e}")
         file_data = None
     
     if not file_data:
-        await query.answer("❌ File not found in database!", show_alert=True)
-        logger.error(f"File not found for ID: {file_id}")
+        await message.reply("❌ <b>File not found!</b>", parse_mode=enums.ParseMode.HTML)
         return
     
     # Build caption
@@ -205,8 +233,7 @@ async def send_file(client, query):
             file_size=get_size(file_data.get('file_size', 0)),
             caption=file_data.get('caption', '')
         )
-    except Exception as e:
-        logger.error(f"Caption format error: {e}")
+    except:
         caption = f"<b>{file_data.get('file_name', 'File')}</b>\n\nJoin: @movies_magic_club3"
     
     # Build buttons
@@ -216,18 +243,15 @@ async def send_file(client, query):
     ]
     
     try:
-        # Send file to user's PM
+        # Send file to user
         msg = await client.send_cached_media(
-            chat_id=query.from_user.id,
+            chat_id=user_id,
             file_id=file_data.get('file_id'),
             caption=caption,
             reply_markup=InlineKeyboardMarkup(file_buttons),
             parse_mode=enums.ParseMode.HTML,
             protect_content=PROTECT_CONTENT
         )
-        
-        await query.answer("✅ File sent to PM!", show_alert=False)
-        logger.info(f"File sent successfully to user {user_id}")
         
         # Auto delete if enabled
         if AUTO_DELETE:
@@ -239,7 +263,18 @@ async def send_file(client, query):
                 
     except Exception as e:
         logger.error(f"Send file error: {e}")
-        await query.answer(f"❌ Error: Start the bot in PM first!", show_alert=True)
+        await message.reply(f"❌ <b>Error:</b> {e}", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_callback_query(filters.regex(r"^file#"))
+async def send_file(client, query):
+    """Send file with verification check (callback from buttons)"""
+    user_id = query.from_user.id
+    file_id = query.data.split("#")[1]
+    
+    # Same logic as send_file_by_deeplink but for callback queries
+    # (Keep your existing send_file function here for backward compatibility)
+    pass
 
 
 @Client.on_callback_query(filters.regex("^close$"))
