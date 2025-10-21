@@ -67,8 +67,17 @@ async def auto_filter(client, message):
     # Apply filters if user has set preferences
     filtered_files = filter_files_by_preference(files, user_id)
     
-    # Build text-style file list (NO BUTTONS - just formatted text)
-    file_text = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>\n\n"
+    if not filtered_files:
+        btn = [[InlineKeyboardButton("❌ No files match your filters", callback_data="nofiles")]]
+        await message.reply(
+            f"<b>No files match your filters for:</b> <code>{search}</code>\n\nTry selecting 'All' in filters.",
+            reply_markup=InlineKeyboardMarkup(btn),
+            parse_mode=enums.ParseMode.HTML
+        )
+        return
+    
+    # Build clickable file buttons (full width - look like text)
+    btn = []
     
     for idx, file in enumerate(filtered_files[:10], 1):
         try:
@@ -76,15 +85,21 @@ async def auto_filter(client, message):
             file_name = file.get('file_name', 'Unknown')
             file_size = get_size(file.get('file_size', 0))
             
-            # Format: 📁 SIZE ▷ FILENAME
-            file_text += f"<b>📁 {file_size}</b> ▷ <code>{file_name}</code>\n\n"
+            # Create button text: 📁 SIZE ▷ FILENAME
+            button_text = f"📁 {file_size} ▷ {file_name}"
+            
+            # Each file gets its own full-width button
+            btn.append([InlineKeyboardButton(button_text, callback_data=f"file#{file_id}")])
             
         except Exception as e:
             logger.error(f"Error processing file: {e}")
             continue
     
+    if not btn:
+        await message.reply("No valid files found.")
+        return
+    
     # Add filter buttons (Single row - inline horizontal layout)
-    btn = []
     filter_row = [
         InlineKeyboardButton("LANGUAGES", callback_data=f"lang#{search}"),
         InlineKeyboardButton("Qualitys", callback_data=f"qual#{search}"),
@@ -107,10 +122,11 @@ async def auto_filter(client, message):
     
     # Build caption with filter info
     filter_info = get_filter_info(user_id)
+    caption = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>{filter_info}\n\nJoin: @movies_magic_club3"
     
     try:
         await message.reply(
-            file_text + filter_info + "\n\nJoin: @movies_magic_club3",
+            caption,
             reply_markup=InlineKeyboardMarkup(btn),
             parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
@@ -234,4 +250,4 @@ async def close_callback(client, query):
         await query.answer("Closed!", show_alert=False)
     except:
         await query.answer("Already closed!", show_alert=False)
-            
+        
