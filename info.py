@@ -1,71 +1,93 @@
 import os
 from os import environ
-import re
-import time
 
-# Bot Configuration
-API_ID = int(environ.get("API_ID", "12345678"))
-API_HASH = environ.get("API_HASH", "your_api_hash_here")
-BOT_TOKEN = environ.get("BOT_TOKEN", "your_bot_token_here")
+# Bot information
+API_ID = int(environ.get("API_ID", "0"))
+API_HASH = environ.get("API_HASH", "")
+BOT_TOKEN = environ.get("BOT_TOKEN", "")
 
-# Database Configuration
-DATABASE_URI = environ.get("DATABASE_URI", "mongodb+srv://username:password@cluster.mongodb.net/")
+# Database
+DATABASE_URI = environ.get("DATABASE_URI", "")
 DATABASE_NAME = environ.get("DATABASE_NAME", "MovieFilterBot")
 
-# Channels & Admin
-id_pattern = re.compile(r'^.\d+$')
-CHANNELS = [int(ch) if id_pattern.search(ch) else ch for ch in environ.get('CHANNELS', '-100').split()]
-ADMINS = [int(admin) if id_pattern.search(admin) else admin for admin in environ.get('ADMINS', '').split()]
+# Admin and channels
+ADMINS = [int(admin) if admin.isdigit() else admin for admin in environ.get('ADMINS', '').split()]
+CHANNELS = [int(ch) if ch.isdigit() else ch for ch in environ.get('CHANNELS', '0').split()]
 LOG_CHANNEL = int(environ.get("LOG_CHANNEL", "0"))
-SUPPORT_CHAT = environ.get("SUPPORT_CHAT", "movies_magic_club3")
 
-# Owner
-OWNER_USERNAME = "Siva9789"
+# Images
+START_IMG = environ.get("START_IMG", "https://telegra.ph/file/d4f88e8df8c19a0c9dbd0.jpg")
+PICS = environ.get("PICS", "https://telegra.ph/file/d4f88e8df8c19a0c9dbd0.jpg").split()
 
-# Force Subscribe
-FORCE_SUB_CHANNEL = int(environ.get("FORCE_SUB_CHANNEL", "0"))
-FORCE_SUB_CHANNEL2 = int(environ.get("FORCE_SUB_CHANNEL2", "0"))
-
-# Verification System
-IS_VERIFY = bool(environ.get("IS_VERIFY", True))
-VERIFY_TUTORIAL = environ.get("VERIFY_TUTORIAL", "https://t.me/movies_magic_club3")
-SHORTLINK_API = environ.get("SHORTLINK_API", "")
-SHORTLINK_URL = environ.get("SHORTLINK_URL", "")
+# Verification settings
+IS_VERIFY = environ.get("IS_VERIFY", "True").lower() in ["true", "yes", "1"]
 VERIFY_EXPIRE = int(environ.get("VERIFY_EXPIRE", "86400"))  # 24 hours in seconds
+VERIFY_TUTORIAL = environ.get("VERIFY_TUTORIAL", "https://t.me/movies_magic_club3")
 
-# Premium Features
+# Shortlink settings (for verification monetization)
+SHORTLINK_URL = environ.get("SHORTLINK_URL", "")
+SHORTLINK_API = environ.get("SHORTLINK_API", "")
+
+# Free limits
+FREE_FILE_LIMIT = int(environ.get("FREE_FILE_LIMIT", "5"))
+
+# Premium and referral settings
 PREMIUM_POINT = int(environ.get("PREMIUM_POINT", "1500"))
 REFER_POINT = int(environ.get("REFER_POINT", "50"))
 
-# Auto Delete
-AUTO_DELETE = bool(environ.get("AUTO_DELETE", True))
+# Bot settings
+PROTECT_CONTENT = environ.get('PROTECT_CONTENT', "False").lower() in ["true", "yes", "1"]
+AUTO_DELETE = environ.get('AUTO_DELETE', "True").lower() in ["true", "yes", "1"]
 AUTO_DELETE_TIME = int(environ.get("AUTO_DELETE_TIME", "600"))  # 10 minutes
-DELETE_CHANNEL = int(environ.get("DELETE_CHANNEL", "0"))
 
-# Stream Settings
-STREAM_MODE = bool(environ.get("STREAM_MODE", False))
-PORT = int(environ.get("PORT", "8080"))
+# Search settings
+IMDB = environ.get("IMDB", "True").lower() in ["true", "yes", "1"]
+SPELL_CHECK = environ.get("SPELL_CHECK", "True").lower() in ["true", "yes", "1"]
+MAX_LIST_ELM = int(environ.get("MAX_LIST_ELM", "10"))
 
-# Rename Settings
-RENAME_MODE = bool(environ.get("RENAME_MODE", True))
+# Single character mode
+SINGLE_BUTTON = environ.get("SINGLE_BUTTON", "True").lower() in ["true", "yes", "1"]
 
-# Other Settings
-SINGLE_BUTTON = bool(environ.get("SINGLE_BUTTON", False))
+# Custom file caption
 CUSTOM_FILE_CAPTION = environ.get("CUSTOM_FILE_CAPTION", "")
-BATCH_FILE_CAPTION = environ.get("BATCH_FILE_CAPTION", "")
-IMDB = bool(environ.get("IMDB", True))
-SPELL_CHECK = bool(environ.get("SPELL_CHECK", True))
-MAX_B_TN = int(environ.get("MAX_B_TN", "10"))
-MAX_LIST_ELM = int(environ.get("MAX_LIST_ELM", "5"))
-INDEX_REQ_CHANNEL = int(environ.get("INDEX_REQ_CHANNEL", LOG_CHANNEL))
-FILE_STORE_CHANNEL = [int(ch) for ch in (environ.get('FILE_STORE_CHANNEL', '')).split()]
-MELCOW_NEW_USERS = bool(environ.get("MELCOW_NEW_USERS", True))
-PROTECT_CONTENT = bool(environ.get("PROTECT_CONTENT", False))
-PUBLIC_FILE_STORE = bool(environ.get("PUBLIC_FILE_STORE", True))
+BATCH_FILE_CAPTION = environ.get("BATCH_FILE_CAPTION", CUSTOM_FILE_CAPTION)
 
-# Pics
-PICS = (environ.get('PICS', 'https://telegra.ph/file/7e56d907542396289fee4.jpg https://telegra.ph/file/9aa8dd372f4739fe02d85.jpg')).split()
-START_IMG = environ.get("START_IMG", "https://i.ibb.co/bPz7QRh/file-15.jpg")
+# Delete channels
+DELETE_CHANNELS = [int(dch) if dch.isdigit() else dch for dch in environ.get('DELETE_CHANNELS', '0').split()]
 
-# Bot Info
-BOT_START_TIME = time.time()
+# Stream settings
+STREAM_MODE = environ.get('STREAM_MODE', "False").lower() in ["true", "yes", "1"]
+NO_PORT = environ.get("NO_PORT", "False").lower() in ["true", "yes", "1"]
+APP_NAME = environ.get("APP_NAME", "")
+if len(APP_NAME) > 0:
+    STREAM_MODE = True
+
+# Port for streaming
+PORT = environ.get("PORT", "8080")
+
+# IMDB settings
+IMDB_TEMPLATE = environ.get("IMDB_TEMPLATE", """
+<b>Title:</b> {title}
+<b>Rating:</b> ⭐ {rating}/10
+<b>Release:</b> {release_date}
+<b>Duration:</b> {runtime} minutes
+<b>Genres:</b> {genres}
+
+<b>Synopsis:</b> {plot}
+""")
+
+# File caption template
+FILE_CAPTION_TEMPLATE = environ.get("FILE_CAPTION_TEMPLATE", """
+<b>📁 File Name:</b> <code>{file_name}</code>
+
+<b>📦 Size:</b> {file_size}
+
+<b>Join:</b> @movies_magic_club3
+""")
+
+# Payment channel for UPI verification
+PAYMENT_CHANNEL = int(environ.get("PAYMENT_CHANNEL", "-1003037490791"))
+
+# QR code image for UPI payments
+UPI_QR_CODE = environ.get("UPI_QR_CODE", "IMG_20251021_083257.jpg")
+UPI_ID = environ.get("UPI_ID", "sivaramanc49@okaxis")
