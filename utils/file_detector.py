@@ -7,26 +7,42 @@ logger = logging.getLogger(__name__)
 user_filters = {}
 
 
+def detect_file_languages(filename):
+    """Detect ALL languages present in filename (multi-language support)"""
+    filename_lower = filename.lower()
+    
+    languages = []
+    
+    # Check for each language (short form + full form)
+    if any(x in filename_lower for x in ['tam', 'tamil']):
+        languages.append('Tamil')
+    
+    if any(x in filename_lower for x in ['tel', 'telugu']):
+        languages.append('Telugu')
+    
+    if any(x in filename_lower for x in ['hin', 'hindi']):
+        languages.append('Hindi')
+    
+    if any(x in filename_lower for x in ['mal', 'malayalam']):
+        languages.append('Malayalam')
+    
+    if any(x in filename_lower for x in ['kan', 'kannada']):
+        languages.append('Kannada')
+    
+    if any(x in filename_lower for x in ['eng', 'english']):
+        languages.append('English')
+    
+    return languages
+
+
 def detect_file_info(filename):
-    """Detect language, quality, and season from filename"""
+    """Detect languages, quality, and season from filename"""
     filename_lower = filename.lower()
     
     logger.info(f"Detecting info for: {filename}")
     
-    # Detect Language - Check for common patterns
-    language = None
-    if any(x in filename_lower for x in [' tam', 'tam ', '+tam', 'tamil']):
-        language = 'Tamil'
-    elif any(x in filename_lower for x in [' tel', 'tel ', '+tel', 'telugu']):
-        language = 'Telugu'
-    elif any(x in filename_lower for x in [' hin', 'hin ', '+hin', 'hindi']):
-        language = 'Hindi'
-    elif any(x in filename_lower for x in [' mal', 'mal ', '+mal', 'malayalam']):
-        language = 'Malayalam'
-    elif any(x in filename_lower for x in [' kan', 'kan ', '+kan', 'kannada']):
-        language = 'Kannada'
-    elif any(x in filename_lower for x in [' eng', 'eng ', '+eng', 'english']):
-        language = 'English'
+    # Detect ALL languages in the file
+    languages = detect_file_languages(filename)
     
     # Detect Quality
     quality = None
@@ -48,9 +64,9 @@ def detect_file_info(filename):
         season_num = season_match.group(1)
         season = f"S{season_num}"
     
-    logger.info(f"Detected -> Lang: {language}, Qual: {quality}, Season: {season}")
+    logger.info(f"Detected -> Languages: {languages}, Quality: {quality}, Season: {season}")
     
-    return language, quality, season
+    return languages, quality, season
 
 
 def filter_files_by_preference(files, user_id):
@@ -66,31 +82,31 @@ def filter_files_by_preference(files, user_id):
     
     for file in files:
         filename = file.get('file_name', '')
-        lang, qual, seas = detect_file_info(filename)
+        languages, quality, season = detect_file_info(filename)
         
         match = True
         
-        # Check language filter
+        # Check language filter - File matches if selected language is IN the file's languages
         if 'language' in prefs and prefs['language'] != 'All':
-            if lang != prefs['language']:
+            if prefs['language'] not in languages:
                 match = False
-                logger.info(f"File {filename[:30]}... rejected: Lang mismatch ({lang} != {prefs['language']})")
+                logger.info(f"File {filename[:40]}... rejected: Language mismatch (wants {prefs['language']}, has {languages})")
         
         # Check quality filter
         if 'quality' in prefs and prefs['quality'] != 'All':
-            if qual != prefs['quality']:
+            if quality != prefs['quality']:
                 match = False
-                logger.info(f"File {filename[:30]}... rejected: Quality mismatch ({qual} != {prefs['quality']})")
+                logger.info(f"File {filename[:40]}... rejected: Quality mismatch ({quality} != {prefs['quality']})")
         
         # Check season filter
         if 'season' in prefs and prefs['season'] != 'All':
-            if seas != prefs['season']:
+            if season != prefs['season']:
                 match = False
-                logger.info(f"File {filename[:30]}... rejected: Season mismatch ({seas} != {prefs['season']})")
+                logger.info(f"File {filename[:40]}... rejected: Season mismatch ({season} != {prefs['season']})")
         
         if match:
             filtered.append(file)
-            logger.info(f"File {filename[:30]}... ACCEPTED")
+            logger.info(f"File {filename[:40]}... ACCEPTED")
     
     logger.info(f"Filtered: {len(filtered)}/{len(files)} files match")
     
