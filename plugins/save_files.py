@@ -1,9 +1,12 @@
 from pyrogram import Client, filters
-from database.database import Media
+from database.database import Database
 from info import CHANNELS, DELETE_CHANNELS
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Initialize database
+db = Database()
 
 # Convert CHANNELS to list of integers
 try:
@@ -47,24 +50,12 @@ async def save_files(client, message):
         file_size = media.file_size
         file_type = message.media.value if message.media else 'document'
         
-        # Prepare file data
-        file_data = {
-            'file_id': file_id,
-            'file_ref': file_ref,
-            'file_name': file_name,
-            'file_size': file_size,
-            'file_type': file_type,
-            'caption': message.caption or '',
-            'chat_id': message.chat.id,
-            'message_id': message.id
-        }
-        
-        # Save to database
-        result = await Media.insert_one(file_data)
+        # Save to database using db.save_file() method
+        result = await db.save_file(file_id, file_name, file_type, file_size, message.caption or '')
         
         if result:
             logger.info(f"✅ Auto-saved: {file_name[:50]} (ID: {file_id[:20]}...)")
         
     except Exception as e:
         logger.error(f"❌ Error saving file: {e}")
-                     
+    
