@@ -1,10 +1,9 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.verify import VerifyDB
 from utils.shortlink_api import get_shortlink, generate_verify_token
-from info import VERIFY_EXPIRE, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL, ADMINS
+from info import VERIFY_EXPIRE, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
 from config import Config
-import time
 
 verify_db = VerifyDB()
 
@@ -27,7 +26,7 @@ async def verify_command(client, message):
         await message.reply(
             f"✅ <b>You are already verified!</b>\n\n⏰ Time remaining: {hours}h {minutes}m\n\nJoin: @movies_magic_club3",
             reply_markup=InlineKeyboardMarkup(buttons),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
         )
         return
@@ -36,8 +35,11 @@ async def verify_command(client, message):
     token = generate_verify_token()
     await verify_db.set_verify_token(user_id, token, 600)  # Token valid for 10 minutes
     
+    # Get bot username
+    me = await client.get_me()
+    
     # Create verification URL
-    verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+    verify_url = f"https://t.me/{me.username}?start=verify_{token}"
     short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
     
     buttons = [
@@ -49,7 +51,7 @@ async def verify_command(client, message):
     await message.reply(
         Config.VERIFY_TXT,
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html",
+        parse_mode=enums.ParseMode.HTML,
         disable_web_page_preview=True
     )
 
@@ -67,8 +69,11 @@ async def verify_callback(client, query):
     token = generate_verify_token()
     await verify_db.set_verify_token(user_id, token, 600)
     
+    # Get bot username
+    me = await client.get_me()
+    
     # Create verification URL
-    verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+    verify_url = f"https://t.me/{me.username}?start=verify_{token}"
     short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
     
     buttons = [
@@ -80,7 +85,7 @@ async def verify_callback(client, query):
     await query.message.reply(
         Config.VERIFY_TXT,
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html",
+        parse_mode=enums.ParseMode.HTML,
         disable_web_page_preview=True
     )
     
