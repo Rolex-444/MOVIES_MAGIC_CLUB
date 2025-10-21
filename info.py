@@ -40,6 +40,7 @@ REFER_POINT = int(environ.get("REFER_POINT", "50"))
 # Auto Delete
 AUTO_DELETE = bool(environ.get("AUTO_DELETE", True))
 AUTO_DELETE_TIME = int(environ.get("AUTO_DELETE_TIME", "600"))  # 10 minutes
+DELETE_CHANNEL = int(environ.get("DELETE_CHANNEL", "0"))
 
 # Stream Settings
 STREAM_MODE = bool(environ.get("STREAM_MODE", False))
