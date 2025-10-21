@@ -6,6 +6,7 @@ from utils.shortlink_api import get_shortlink, generate_verify_token
 from utils.file_properties import get_size
 from info import *
 from config import Config
+from bson import ObjectId
 import random
 import asyncio
 import logging
@@ -108,6 +109,8 @@ async def send_file(client, query):
     user_id = query.from_user.id
     file_id = query.data.split("#")[1]
     
+    logger.info(f"File button clicked by user {user_id}, file_id: {file_id}")
+    
     # Check if user is admin (admins bypass everything)
     if user_id not in ADMINS:
         # Check if user can access file (verified or under free limit)
@@ -144,13 +147,22 @@ async def send_file(client, query):
     
     # Get file data from database
     try:
-        file_data = await db.get_file(file_id)
+        # Convert string ID to ObjectId for MongoDB
+        if len(file_id) == 24:  # MongoDB ObjectId length
+            mongo_id = ObjectId(file_id)
+        else:
+            mongo_id = file_id
+        
+        file_data = await db.get_file(mongo_id)
+        logger.info(f"File data retrieved: {file_data is not None}")
+        
     except Exception as e:
-        logger.error(f"Error getting file: {e}")
+        logger.error(f"Error getting file {file_id}: {e}")
         file_data = None
     
     if not file_data:
         await query.answer("❌ File not found in database!", show_alert=True)
+        logger.error(f"File not found for ID: {file_id}")
         return
     
     # Build caption
@@ -161,7 +173,8 @@ async def send_file(client, query):
             file_size=get_size(file_data.get('file_size', 0)),
             caption=file_data.get('caption', '')
         )
-    except:
+    except Exception as e:
+        logger.error(f"Caption format error: {e}")
         caption = f"<b>{file_data.get('file_name', 'File')}</b>\n\nJoin: @movies_magic_club3"
     
     # Build buttons
@@ -182,6 +195,7 @@ async def send_file(client, query):
         )
         
         await query.answer("✅ File sent to PM!", show_alert=False)
+        logger.info(f"File sent successfully to user {user_id}")
         
         # Auto delete if enabled
         if AUTO_DELETE:
@@ -193,7 +207,100 @@ async def send_file(client, query):
                 
     except Exception as e:
         logger.error(f"Send file error: {e}")
-        await query.answer(f"❌ Error sending file. Check if you started the bot in PM!", show_alert=True)
+        await query.answer(f"❌ Error: Start the bot in PM first!", show_alert=True)
+
+
+async def send_file_by_id(client, message, file_id):
+    """Send file by ID (used in start command deep links)"""
+    user_id = message.from_user.id
+    
+    # Check if user is admin
+    if user_id not in ADMINS:
+        # Check if user can access file
+        can_access = await verify_db.can_access_file(user_id)
+        
+        if not can_access:
+            # User needs to verify
+            token = generate_verify_token()
+            await verify_db.set_verify_token(user_id, token, 600)
+            
+            # Get bot username
+            me = await client.get_me()
+            verify_url = f"https://t.me/{me.username}?start=verify_{token}"
+            short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
+            
+            buttons = [
+                [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
+                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
+                [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
+            ]
+            
+            await message.reply(
+                Config.VERIFY_TXT,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True
+            )
+            return
+        
+        # Increment file attempts for non-verified users
+        if not await verify_db.is_verified(user_id):
+            await verify_db.increment_file_attempts(user_id)
+    
+    # Get file data
+    try:
+        # Convert string ID to ObjectId for MongoDB
+        if len(file_id) == 24:
+            mongo_id = ObjectId(file_id)
+        else:
+            mongo_id = file_id
+        
+        file_data = await db.get_file(mongo_id)
+    except Exception as e:
+        logger.error(f"Error getting file: {e}")
+        file_data = None
+    
+    if not file_data:
+        await message.reply("❌ <b>File not found!</b>", parse_mode=enums.ParseMode.HTML)
+        return
+    
+    # Build caption
+    try:
+        caption = CUSTOM_FILE_CAPTION if CUSTOM_FILE_CAPTION else Config.FILE_CAPTION
+        caption = caption.format(
+            file_name=file_data.get('file_name', 'Unknown'),
+            file_size=get_size(file_data.get('file_size', 0)),
+            caption=file_data.get('caption', '')
+        )
+    except:
+        caption = f"<b>{file_data.get('file_name', 'File')}</b>\n\nJoin: @movies_magic_club3"
+    
+    # Build buttons
+    file_buttons = [
+        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+    ]
+    
+    try:
+        msg = await client.send_cached_media(
+            chat_id=user_id,
+            file_id=file_data.get('file_id'),
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(file_buttons),
+            parse_mode=enums.ParseMode.HTML,
+            protect_content=PROTECT_CONTENT
+        )
+        
+        # Auto delete if enabled
+        if AUTO_DELETE:
+            await asyncio.sleep(AUTO_DELETE_TIME)
+            try:
+                await msg.delete()
+            except:
+                pass
+                
+    except Exception as e:
+        await message.reply(f"❌ <b>Error:</b> {e}", parse_mode=enums.ParseMode.HTML)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -204,4 +311,42 @@ async def close_callback(client, query):
         await query.answer("Closed!", show_alert=False)
     except:
         await query.answer("Already closed!", show_alert=False)
+
+
+@Client.on_callback_query(filters.regex(r"^next_"))
+async def next_page(client, query):
+    """Handle pagination - next page"""
+    _, offset = query.data.split("_")
+    search = query.message.caption.split("for:")[1].split("\n")[0].strip() if "for:" in query.message.caption else ""
+    
+    try:
+        result = await db.search_files(search, offset=int(offset))
+        
+        if isinstance(result, tuple):
+            files, total = result
+        else:
+            files = result
+    except:
+        files = []
+    
+    if not files:
+        await query.answer("No more results!", show_alert=True)
+        return
+    
+    btn = []
+    for file in files[:10]:
+        file_id = str(file.get('_id'))
+        file_name = file.get('file_name', 'Unknown')
+        btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
+    
+    btn.append([InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")])
+    btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
+    
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=InlineKeyboardMarkup(btn)
+        )
+        await query.answer()
+    except Exception as e:
+        await query.answer(f"Error: {e}", show_alert=True)
             
