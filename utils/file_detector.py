@@ -1,4 +1,7 @@
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Store user filter preferences temporarily (in-memory)
 user_filters = {}
@@ -8,19 +11,21 @@ def detect_file_info(filename):
     """Detect language, quality, and season from filename"""
     filename_lower = filename.lower()
     
-    # Detect Language
+    logger.info(f"Detecting info for: {filename}")
+    
+    # Detect Language - Check for common patterns
     language = None
-    if any(x in filename_lower for x in ['tam', 'tamil']):
+    if any(x in filename_lower for x in [' tam', 'tam ', '+tam', 'tamil']):
         language = 'Tamil'
-    elif any(x in filename_lower for x in ['tel', 'telugu']):
+    elif any(x in filename_lower for x in [' tel', 'tel ', '+tel', 'telugu']):
         language = 'Telugu'
-    elif any(x in filename_lower for x in ['hin', 'hindi']):
+    elif any(x in filename_lower for x in [' hin', 'hin ', '+hin', 'hindi']):
         language = 'Hindi'
-    elif any(x in filename_lower for x in ['mal', 'malayalam']):
+    elif any(x in filename_lower for x in [' mal', 'mal ', '+mal', 'malayalam']):
         language = 'Malayalam'
-    elif any(x in filename_lower for x in ['kan', 'kannada']):
+    elif any(x in filename_lower for x in [' kan', 'kan ', '+kan', 'kannada']):
         language = 'Kannada'
-    elif any(x in filename_lower for x in ['eng', 'english']):
+    elif any(x in filename_lower for x in [' eng', 'eng ', '+eng', 'english']):
         language = 'English'
     
     # Detect Quality
@@ -38,9 +43,12 @@ def detect_file_info(filename):
     
     # Detect Season
     season = None
-    season_match = re.search(r'[Ss](\d+)', filename)
+    season_match = re.search(r'[Ss]0*(\d+)', filename)
     if season_match:
-        season = f"S{season_match.group(1)}"
+        season_num = season_match.group(1)
+        season = f"S{season_num}"
+    
+    logger.info(f"Detected -> Lang: {language}, Qual: {quality}, Season: {season}")
     
     return language, quality, season
 
@@ -48,9 +56,12 @@ def detect_file_info(filename):
 def filter_files_by_preference(files, user_id):
     """Filter files based on user's language, quality, and season preferences"""
     if user_id not in user_filters:
+        logger.info(f"No filters set for user {user_id}")
         return files
     
     prefs = user_filters[user_id]
+    logger.info(f"User {user_id} filters: {prefs}")
+    
     filtered = []
     
     for file in files:
@@ -63,21 +74,27 @@ def filter_files_by_preference(files, user_id):
         if 'language' in prefs and prefs['language'] != 'All':
             if lang != prefs['language']:
                 match = False
+                logger.info(f"File {filename[:30]}... rejected: Lang mismatch ({lang} != {prefs['language']})")
         
         # Check quality filter
         if 'quality' in prefs and prefs['quality'] != 'All':
             if qual != prefs['quality']:
                 match = False
+                logger.info(f"File {filename[:30]}... rejected: Quality mismatch ({qual} != {prefs['quality']})")
         
         # Check season filter
         if 'season' in prefs and prefs['season'] != 'All':
             if seas != prefs['season']:
                 match = False
+                logger.info(f"File {filename[:30]}... rejected: Season mismatch ({seas} != {prefs['season']})")
         
         if match:
             filtered.append(file)
+            logger.info(f"File {filename[:30]}... ACCEPTED")
     
-    return filtered if filtered else files
+    logger.info(f"Filtered: {len(filtered)}/{len(files)} files match")
+    
+    return filtered
 
 
 def get_filter_info(user_id):
@@ -99,9 +116,12 @@ def set_user_filter(user_id, filter_type, value):
     if user_id not in user_filters:
         user_filters[user_id] = {}
     user_filters[user_id][filter_type] = value
+    logger.info(f"Set filter for user {user_id}: {filter_type}={value}")
 
 
 def reset_user_filters(user_id):
     """Reset all filters for a user"""
     if user_id in user_filters:
         del user_filters[user_id]
+        logger.info(f"Reset all filters for user {user_id}")
+    
