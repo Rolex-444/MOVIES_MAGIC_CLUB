@@ -1,19 +1,34 @@
 from pyrogram import Client, filters
-from database.database import Database
-from info import CHANNELS, DELETE_CHANNELS  # Import DELETE_CHANNELS
+from database.database import Media
+from info import CHANNELS, DELETE_CHANNELS
 import logging
 
 logger = logging.getLogger(__name__)
-db = Database()
+
+# Convert CHANNELS to list of integers
+try:
+    SAVE_CHANNELS = [int(ch) for ch in str(CHANNELS).split()] if CHANNELS else []
+    DELETE_CHANNEL_LIST = [int(ch) for ch in str(DELETE_CHANNELS).split()] if DELETE_CHANNELS else []
+except Exception as e:
+    logger.error(f"Error parsing channels: {e}")
+    SAVE_CHANNELS = []
+    DELETE_CHANNEL_LIST = []
+
+logger.info(f"✅ Auto-save enabled for channels: {SAVE_CHANNELS}")
+logger.info(f"⛔ Delete channels (skip save): {DELETE_CHANNEL_LIST}")
 
 
-@Client.on_message(filters.channel & filters.chat(CHANNELS))  # Only CHANNELS, not DELETE_CHANNELS
+@Client.on_message(filters.channel & filters.incoming)
 async def save_files(client, message):
     """Save files from storage channels only (exclude DELETE_CHANNELS)"""
     
+    # Check if from a monitored channel
+    if message.chat.id not in SAVE_CHANNELS:
+        return
+    
     # Double check - skip if it's a delete channel
-    if message.chat.id in DELETE_CHANNELS:
-        logger.info(f"Skipping file from DELETE_CHANNEL: {message.chat.id}")
+    if message.chat.id in DELETE_CHANNEL_LIST:
+        logger.info(f"⛔ Skipping file from DELETE_CHANNEL: {message.chat.id}")
         return
     
     # Check if message has media
@@ -25,24 +40,31 @@ async def save_files(client, message):
     if not media:
         return
     
-    file_id = media.file_id
-    file_name = getattr(media, 'file_name', 'Unknown')
-    file_size = media.file_size
-    
-    # Prepare file data
-    file_data = {
-        'file_id': file_id,
-        'file_name': file_name,
-        'file_size': file_size,
-        'channel_id': message.chat.id,
-        'message_id': message.id,
-        'caption': message.caption or ''
-    }
-    
-    # Save to database
     try:
-        await db.add_file(file_data)
-        logger.info(f"✅ Saved file: {file_name}")
-    except Exception as e:
-        logger.error(f"Error saving file: {e}")
+        file_id = media.file_id
+        file_ref = getattr(media, 'file_ref', '')
+        file_name = getattr(media, 'file_name', '') or message.caption or 'Untitled'
+        file_size = media.file_size
+        file_type = message.media.value if message.media else 'document'
         
+        # Prepare file data
+        file_data = {
+            'file_id': file_id,
+            'file_ref': file_ref,
+            'file_name': file_name,
+            'file_size': file_size,
+            'file_type': file_type,
+            'caption': message.caption or '',
+            'chat_id': message.chat.id,
+            'message_id': message.id
+        }
+        
+        # Save to database
+        result = await Media.insert_one(file_data)
+        
+        if result:
+            logger.info(f"✅ Auto-saved: {file_name[:50]} (ID: {file_id[:20]}...)")
+        
+    except Exception as e:
+        logger.error(f"❌ Error saving file: {e}")
+                     
