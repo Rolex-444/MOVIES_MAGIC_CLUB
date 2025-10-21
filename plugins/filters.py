@@ -1,19 +1,44 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.verify import VerifyDB
-from database.users import UserDB
-from utils.filters_func import search_files
 from utils.shortlink_api import get_shortlink, generate_verify_token
 from utils.file_properties import get_size
 from info import *
 from config import Config
 import random
 import asyncio
+import logging
 
+logger = logging.getLogger(__name__)
 db = Database()
 verify_db = VerifyDB()
-user_db = UserDB()
+
+
+async def get_imdb_info(query):
+    """Get IMDB info for movie - Returns None if IMDB not configured"""
+    try:
+        # IMDB integration can be added here later
+        # For now, return None to skip IMDB
+        return None
+    except:
+        return None
+
+
+async def spell_check(client, message, search):
+    """Spell check function for incorrect movie names"""
+    try:
+        await message.reply(
+            f"❌ <b>No results found for:</b> <code>{search}</code>\n\n"
+            "💡 <b>Suggestions:</b>\n"
+            "• Check your spelling\n"
+            "• Try different keywords\n"
+            "• Use movie name only (without year)\n\n"
+            "Join: @movies_magic_club3",
+            parse_mode=enums.ParseMode.HTML
+        )
+    except Exception as e:
+        logger.error(f"Spell check error: {e}")
 
 
 @Client.on_message(filters.text & filters.group)
@@ -23,52 +48,46 @@ async def auto_filter(client, message):
         return
     
     search = message.text
-    files, offset, total = await search_files(search)
+    
+    # Search for files in database
+    try:
+        files = await db.search_files(search)
+    except Exception as e:
+        logger.error(f"Database search error: {e}")
+        files = []
     
     if not files:
         if SPELL_CHECK:
             await spell_check(client, message, search)
         return
     
+    # Build file buttons
     btn = []
-    for file in files:
+    for file in files[:10]:  # Limit to 10 results
         file_id = str(file.get('_id'))
         file_name = file.get('file_name', 'Unknown')
         
-        # Create file button with callback
         btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
-    
-    # Add pagination if needed
-    if offset != "":
-        btn.append(
-            [InlineKeyboardButton("📄 Pages", callback_data="pages"),
-             InlineKeyboardButton(f"1/{round(int(total)/10)}", callback_data="pages"),
-             InlineKeyboardButton("Next ⏩", callback_data=f"next_{offset}")]
-        )
     
     btn.append([InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")])
     btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
     
-    # Build caption with IMDB info if enabled
-    if IMDB:
-        imdb_info = await get_imdb_info(search)
-        caption = format_caption(imdb_info, total)
-    else:
-        caption = f"<b>Found {total} results for:</b> <code>{search}</code>\n\n"
+    # Build caption (IMDB disabled for now)
+    caption = f"<b>Found {len(files)} results for:</b> <code>{search}</code>\n\nJoin: @movies_magic_club3"
     
     try:
         await message.reply_photo(
             photo=random.choice(PICS),
             caption=caption,
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
         )
     except Exception:
         await message.reply(
             caption,
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode="html"
+            parse_mode=enums.ParseMode.HTML
         )
 
 
@@ -88,8 +107,9 @@ async def send_file(client, query):
             token = generate_verify_token()
             await verify_db.set_verify_token(user_id, token, 600)  # Token valid for 10 mins
             
-            # Create verification URL
-            verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+            # Get bot username
+            me = await client.get_me()
+            verify_url = f"https://t.me/{me.username}?start=verify_{token}"
             short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
             
             buttons = [
@@ -102,7 +122,7 @@ async def send_file(client, query):
             await query.message.reply(
                 Config.VERIFY_TXT,
                 reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode="html",
+                parse_mode=enums.ParseMode.HTML,
                 disable_web_page_preview=True
             )
             return
@@ -140,7 +160,7 @@ async def send_file(client, query):
             file_id=file_data.get('file_id'),
             caption=caption,
             reply_markup=InlineKeyboardMarkup(file_buttons),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             protect_content=PROTECT_CONTENT
         )
         
@@ -172,8 +192,9 @@ async def send_file_by_id(client, message, file_id):
             token = generate_verify_token()
             await verify_db.set_verify_token(user_id, token, 600)
             
-            # Create verification URL
-            verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+            # Get bot username
+            me = await client.get_me()
+            verify_url = f"https://t.me/{me.username}?start=verify_{token}"
             short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
             
             buttons = [
@@ -185,7 +206,7 @@ async def send_file_by_id(client, message, file_id):
             await message.reply(
                 Config.VERIFY_TXT,
                 reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode="html",
+                parse_mode=enums.ParseMode.HTML,
                 disable_web_page_preview=True
             )
             return
@@ -197,7 +218,7 @@ async def send_file_by_id(client, message, file_id):
     # Get file data
     file_data = await db.get_file(file_id)
     if not file_data:
-        await message.reply("❌ <b>File not found!</b>", parse_mode="html")
+        await message.reply("❌ <b>File not found!</b>", parse_mode=enums.ParseMode.HTML)
         return
     
     # Build caption
@@ -222,7 +243,7 @@ async def send_file_by_id(client, message, file_id):
             file_id=file_data.get('file_id'),
             caption=caption,
             reply_markup=InlineKeyboardMarkup(file_buttons),
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML,
             protect_content=PROTECT_CONTENT
         )
         
@@ -235,7 +256,14 @@ async def send_file_by_id(client, message, file_id):
                 pass
                 
     except Exception as e:
-        await message.reply(f"❌ <b>Error:</b> {e}", parse_mode="html")
+        await message.reply(f"❌ <b>Error:</b> {e}", parse_mode=enums.ParseMode.HTML)
+
+
+@Client.on_callback_query(filters.regex("^close$"))
+async def close_callback(client, query):
+    """Close button handler"""
+    await query.message.delete()
+    await query.answer("Closed!", show_alert=False)
 
 
 @Client.on_callback_query(filters.regex(r"^next_"))
@@ -244,33 +272,21 @@ async def next_page(client, query):
     _, offset = query.data.split("_")
     search = query.message.caption.split("for:")[1].split("\n")[0].strip() if "for:" in query.message.caption else ""
     
-    files, next_offset, total = await search_files(search, offset=offset)
+    try:
+        files = await db.search_files(search, offset=int(offset))
+    except:
+        files = []
     
     if not files:
         await query.answer("No more results!", show_alert=True)
         return
     
     btn = []
-    for file in files:
+    for file in files[:10]:
         file_id = str(file.get('_id'))
         file_name = file.get('file_name', 'Unknown')
         btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
     
-    # Add pagination
-    current_page = int(offset) // 10 + 1
-    total_pages = round(int(total) / 10)
-    
-    nav_buttons = [InlineKeyboardButton("📄 Pages", callback_data="pages")]
-    
-    if current_page > 1:
-        nav_buttons.insert(0, InlineKeyboardButton("⏪ Previous", callback_data=f"prev_{offset}"))
-    
-    nav_buttons.append(InlineKeyboardButton(f"{current_page}/{total_pages}", callback_data="pages"))
-    
-    if next_offset != "":
-        nav_buttons.append(InlineKeyboardButton("Next ⏩", callback_data=f"next_{next_offset}"))
-    
-    btn.append(nav_buttons)
     btn.append([InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")])
     btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
     
@@ -281,11 +297,4 @@ async def next_page(client, query):
         await query.answer()
     except Exception as e:
         await query.answer(f"Error: {e}", show_alert=True)
-
-
-@Client.on_callback_query(filters.regex("^close$"))
-async def close_callback(client, query):
-    """Close button handler"""
-    await query.message.delete()
-    await query.answer("Closed!", show_alert=False)
-             
+        
