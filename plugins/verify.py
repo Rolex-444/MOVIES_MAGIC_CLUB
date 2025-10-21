@@ -1,49 +1,51 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.verify import VerifyDB
-from utils.shortlink_api import get_shortlink
-from info import VERIFY_EXPIRE, IS_VERIFY, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
+from utils.shortlink_api import get_shortlink, generate_verify_token
+from info import VERIFY_EXPIRE, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL, ADMINS
 from config import Config
 import time
 
 verify_db = VerifyDB()
 
-@Client.on_message(filters.command("verify"))
+@Client.on_message(filters.command("verify") & filters.private)
 async def verify_command(client, message):
     user_id = message.from_user.id
-
-    if not IS_VERIFY:
-        await message.reply("Verification is currently disabled.", parse_mode="html")
-        return
-
+    
+    # Check if already verified
     if await verify_db.is_verified(user_id):
         status = await verify_db.get_verify_status(user_id)
         expire_time = status['expire_at'] - int(time.time())
         hours = expire_time // 3600
         minutes = (expire_time % 3600) // 60
-
+        
         buttons = [
-            [InlineKeyboardButton("🔞 <b><i>18+ Rare Videos</i></b>", url="https://t.me/REAL_TERABOX_PRO_bot")],
-            [InlineKeyboardButton("❌ <b><i>Close</i></b>", callback_data="close")]
+            [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
-
+        
         await message.reply(
-            f"✅ <b><i>You are already verified!</i></b>\n\n⏰ Time remaining: {hours}h {minutes}m\n\nJoin: <a href='https://t.me/movies_magic_club3'>@movies_magic_club3</a>",
+            f"✅ <b>You are already verified!</b>\n\n⏰ Time remaining: {hours}h {minutes}m\n\nJoin: @movies_magic_club3",
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="html",
             disable_web_page_preview=True
         )
         return
-
-    verify_url = f"https://t.me/{client.username}?start=verify_{user_id}"
-    short_url = await get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
-
+    
+    # Generate verification token
+    token = generate_verify_token()
+    await verify_db.set_verify_token(user_id, token, 600)  # Token valid for 10 minutes
+    
+    # Create verification URL
+    verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+    short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
+    
     buttons = [
-        [InlineKeyboardButton("🔐 <b><i>Verify Now</i></b>", url=short_url)],
-        [InlineKeyboardButton("📚 <b><i>How to Verify?</i></b>", url=VERIFY_TUTORIAL)],
-        [InlineKeyboardButton("🔞 <b><i>18+ Rare Videos</i></b>", url="https://t.me/REAL_TERABOX_PRO_bot")]
+        [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
+        [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
+        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
     ]
-
+    
     await message.reply(
         Config.VERIFY_TXT,
         reply_markup=InlineKeyboardMarkup(buttons),
@@ -51,7 +53,34 @@ async def verify_command(client, message):
         disable_web_page_preview=True
     )
 
-async def check_verification(user_id: int) -> bool:
-    if not IS_VERIFY:
-        return True
-    return await verify_db.is_verified(user_id)
+
+@Client.on_callback_query(filters.regex("^verify_user$"))
+async def verify_callback(client, query):
+    user_id = query.from_user.id
+    
+    # Check if already verified
+    if await verify_db.is_verified(user_id):
+        await query.answer("✅ You are already verified!", show_alert=True)
+        return
+    
+    # Generate verification token
+    token = generate_verify_token()
+    await verify_db.set_verify_token(user_id, token, 600)
+    
+    # Create verification URL
+    verify_url = f"https://t.me/{client.username}?start=verify_{token}"
+    short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
+    
+    buttons = [
+        [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
+        [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
+        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
+    ]
+    
+    await query.message.reply(
+        Config.VERIFY_TXT,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode="html",
+        disable_web_page_preview=True
+    )
+    
