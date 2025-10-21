@@ -1,9 +1,8 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from info import ADMINS
 import logging
 import asyncio
 from datetime import datetime
-import re
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ async def bulk_forward_files(client, message):
                 "<b>Example:</b>\n"
                 "<code>/bulkforward -1002498541249 -1003000499044 1 3710</code>\n\n"
                 "<b>Note:</b> Make sure bot is admin in BOTH channels!",
-                parse_mode="HTML"
+                parse_mode=enums.ParseMode.HTML
             )
             return
         
@@ -71,7 +70,7 @@ async def bulk_forward_files(client, message):
             f"<b>Range:</b> {start_id} - {end_id}\n"
             f"<b>Total:</b> {total} messages\n\n"
             f"<b>⏳ Initializing...</b>",
-            parse_mode="HTML"
+            parse_mode=enums.ParseMode.HTML
         )
         
         # Forward files
@@ -120,7 +119,7 @@ async def bulk_forward_files(client, message):
                         f"<b>📊 Progress:</b> {int((success + failed + skipped) / total * 100)}%\n"
                         f"<b>⚡ Speed:</b> {int(speed)} files/min\n"
                         f"<b>⏱️ ETA:</b> ~{eta} min",
-                        parse_mode="HTML"
+                        parse_mode=enums.ParseMode.HTML
                     )
                 
             except Exception as e:
@@ -138,7 +137,7 @@ async def bulk_forward_files(client, message):
                         f"⚠️ <b>FLOOD WAIT DETECTED</b>\n\n"
                         f"Pausing for {wait_time} seconds...\n"
                         f"Progress: {success}/{total}",
-                        parse_mode="HTML"
+                        parse_mode=enums.ParseMode.HTML
                     )
                     await asyncio.sleep(wait_time)
                     
@@ -176,7 +175,7 @@ async def bulk_forward_files(client, message):
             f"<b>⏭️ Skipped:</b> {skipped}\n\n"
             f"<b>⏱️ Time Taken:</b> {elapsed_min}m {elapsed_sec}s\n"
             f"<b>📊 Success Rate:</b> {int(success / max(total, 1) * 100)}%",
-            parse_mode="HTML"
+            parse_mode=enums.ParseMode.HTML
         )
         
     except Exception as e:
@@ -193,4 +192,4 @@ async def stop_forwarding(client, message):
         await message.reply("⏹️ Forwarding will stop after current message.")
     else:
         await message.reply("❌ No active forwarding task found.")
-        
+                    
