@@ -1,98 +1,94 @@
 class Config:
-    # Bot messages
-    START_TXT = """Hello {} 👋
-    
-I'm an advanced auto filter bot with verification system by @Siva9789
+    # Stylish Start Message
+    START_TXT = """<b><i>✨ Welcome, <i>{}</i>! ✨</i></b>
 
-<b>Features:</b>
-✨ Auto Filter Movies
-🔐 Shortlink Verification  
-👑 Premium Plans
-📝 Rename Files
-🎬 Stream Files
-🔗 Batch Links
-📊 IMDB Info
-👥 Referral System
+🖤 <i>Get ready for a cinematic journey unlike any other.</i>
 
-Click on Help to know more about my features!
+🏆 <b><i>Your Premium Movie Filter Bot</i></b> 🍿
 
-Join: @movies_magic_club3"""
+💎 <b>Features You’ll Love:</b>
+• <i>Instant movie searching</i>
+• <i>Foolproof verification</i>
+• <i>Smooth streaming</i>
+• <i>Exclusive premium perks</i>
 
-    HELP_TXT = """Here are my commands and features:
+<span style='color:#FFD700;'>Join Our Elite Community:</span>  
+<a href='https://t.me/movies_magic_club3'>🔗 <b>@movies_magic_club3</b></a>
 
-🔍 <b>Filter Commands</b>
-• Just type movie name in group
-• I'll find and send the files
-• Works with quality filters (480p, 720p, 1080p)
-• Language filters (Hindi, Tamil, Telugu, etc.)
+💬 Need Help? Contact <b>@Siva9789</b> for personalized support.
+"""
 
-🔐 <b>Verification System</b>
-• Verify once every 24 hours
-• Complete shortlink verification
-• Get unlimited access after verification
+    # Premium Section with Gold Highlights
+    PREMIUM_TXT = """<b><i>🏆 Welcome to the VIP Lounge! 🏆</i></b>
 
-👑 <b>Premium Features</b>
-• No verification needed
-• Instant file access
-• Fast download button
-• Priority support
-• Ad-free experience
+<span style='color:#FFD700;'>Unlock exclusive benefits:</span>
+• <i>No more verification hassle</i>  
+• <i>Fast download with a single tap</i>  
+• <i>Priority access to new releases</i>  
+• <i>Ad-free streaming experience</i>
 
-📝 <b>Rename Files</b>
-• Reply to file with /rename <new_name>
-• Get file with custom name
+💰 <b>Plans:</b>
+<i>1500 points = 1 Month Premium</i>  
+<i>Contact <b>@Siva9789</b> for lifetime plans</i>
 
-🎬 <b>Stream Files</b>
-• Use /stream command
-• Watch files online
+🎁 <span style='color:#FFD700;'>Earn free premium by referring friends!</span>  
+<a href='https://t.me/movies_magic_club3'>Join Here</a>
+"""
 
-<b>Commands:</b>
-/start - Start the bot
-/verify - Verify yourself
-/premium - Check premium status
-/refer - Get referral link
+    # Verification Message — Clear & Premium
+    VERIFY_TXT = """<b><i>🔐 Verification Needed</i></b>
 
-For more help, contact: @Siva9789
-Join: @movies_magic_club3"""
+🖤 <i>Complete the verification shortlink below to unlock full access.</i>
 
+⏰ <b>Valid for 24 hours</b> — enjoy premium uninterrupted.
+
+<a href='{SHORTLINK_URL}'>✨ <b>Verify Now</b></a>
+
+✨ Need guidance? Join our community at  
+<a href='https://t.me/movies_magic_club3'>🔗 @movies_magic_club3</a>
+"""
+
+    # Help Message - Eye-Catching Design
+    HELP_TXT = """<b><i>🗨️ How to Use Your Movie Bot</i></b>
+
+🎥 <b>Search Movies:</b>  
+<i>Simply type the movie name in your group.</i>
+
+✨ <b>Features:</b>  
+• Instant search results  
+• Quality & language filters - 480p, 720p, Hindi, Tamil...  
+• Batch downloads & rename features  
+• Stream movies on-demand  
+
+🔐 <b>Verification:</b>  
+<i>Verify once every 24 hours through a secure shortlink.</i>  
+Premium users skip verification altogether!
+
+⚡ Need help? Contact <b><i>@Siva9789</i></b> or join  
+<a href='https://t.me/movies_magic_club3'>🔗 @movies_magic_club3</a>
+"""
+
+    # About Message - Clean & Premium
     ABOUT_TXT = """
 ╔════❰ ABOUT ❱════⍟
 ║
 ║ ★ Bot : {}
-║ ★ Creator : @Siva9789
+║ ★ Creator : <b>@Siva9789</b>
 ║ ★ Library : Pyrogram
 ║ ★ Language : Python3
 ║ ★ Database : MongoDB
-║ ★ Channel : @movies_magic_club3
-║ 
-╚═══════════════════⍟"""
+║ ★ Channel : <a href='https://t.me/movies_magic_club3'>@movies_magic_club3</a>
+║
+╚═══════════════════⍟
+"""
 
-    VERIFY_TXT = """🔐 <b>Verification Required</b>
-
-To use this bot, you need to verify yourself first by completing the shortlink.
-
-⏰ <b>Verification valid for:</b> 24 Hours
-
-📌 <b>How to Verify:</b>
-1. Click "Verify Now" button
-2. Complete the shortlink
-3. Come back and click start
-
-Click the button below to verify:"""
-
-    VERIFIED_TXT = """✅ <b>Verification Successful!</b>
-
-You have been verified successfully.
-Now you can use the bot without any restrictions for 24 hours.
-
-Search for any movie now! 🎬
-
-Join: @movies_magic_club3"""
-
+    # File Caption Style
     FILE_CAPTION = """
 <b>📁 {file_name}</b>
 
 <b>Size:</b> {file_size}
 
-<b>Join:</b> @movies_magic_club3
-<b>Owner:</b> @Siva9789"""
+<b>Join:</b> <a href='https://t.me/movies_magic_club3'>@movies_magic_club3</a>
+<b>Owner:</b> <b><i>@Siva9789</i></b>
+"""
+    
