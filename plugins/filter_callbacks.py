@@ -2,6 +2,7 @@ from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from utils.file_detector import set_user_filter, filter_files_by_preference, get_filter_info
+from utils.file_properties import get_size
 from bson import ObjectId
 import logging
 
@@ -123,8 +124,12 @@ async def set_season(client, query):
 
 
 async def refresh_results(client, message, search, user_id):
-    """Refresh search results with applied filters"""
+    """Refresh search results with applied filters - CLICKABLE TEXT LINKS STYLE"""
     try:
+        # Get bot username for deep links
+        me = await client.get_me()
+        bot_username = me.username
+        
         result = await db.search_files(search)
         
         if isinstance(result, tuple):
@@ -134,17 +139,32 @@ async def refresh_results(client, message, search, user_id):
         
         filtered_files = filter_files_by_preference(files, user_id)
         
+        # Build text with clickable HTML links (NO BUTTONS)
+        file_text = f"<b>📂 HERE I FOUND FOR YOUR SEARCH</b> <code>{search}</code>\n\n"
+        
+        if filtered_files:
+            for file in filtered_files[:10]:
+                try:
+                    file_id = str(file.get('_id', ''))
+                    file_name = file.get('file_name', 'Unknown')
+                    file_size = get_size(file.get('file_size', 0))
+                    
+                    # Create deep link
+                    deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                    
+                    # Format as clickable HTML link
+                    clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                    
+                    file_text += f"{clickable_text}\n\n"
+                    
+                except Exception as e:
+                    logger.error(f"Error processing file: {e}")
+                    continue
+        else:
+            file_text += "<b>❌ No files match your filters</b>\n\n"
+        
+        # Add filter buttons ONLY (no file buttons)
         btn = []
-        for file in filtered_files[:10]:
-            file_id = str(file.get('_id', ''))
-            file_name = file.get('file_name', 'Unknown')
-            if file_id:
-                btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
-        
-        if not btn:
-            btn.append([InlineKeyboardButton("❌ No files match filters", callback_data="none")])
-        
-        # Add filter buttons (single row)
         filter_row = [
             InlineKeyboardButton("LANGUAGES", callback_data=f"lang#{search}"),
             InlineKeyboardButton("Qualitys", callback_data=f"qual#{search}"),
@@ -156,12 +176,13 @@ async def refresh_results(client, message, search, user_id):
         btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
         
         filter_info = get_filter_info(user_id)
-        caption = f"<b>Found {len(filtered_files)} results for:</b> <code>{search}</code>{filter_info}\n\nJoin: @movies_magic_club3"
+        file_text += filter_info + "\n\nJoin: @movies_magic_club3"
         
-        await message.edit_caption(
-            caption=caption,
+        await message.edit_text(
+            file_text,
             reply_markup=InlineKeyboardMarkup(btn),
-            parse_mode=enums.ParseMode.HTML
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
         )
     except Exception as e:
         logger.error(f"Refresh error: {e}")
@@ -173,3 +194,4 @@ async def back_to_results(client, query):
     search = query.data.split("#")[1]
     user_id = query.from_user.id
     await refresh_results(client, query.message, search, user_id)
+    
