@@ -1,4 +1,4 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.verify import VerifyDB
 from info import START_IMG, ADMINS
@@ -36,14 +36,14 @@ async def start_command(client, message):
                     await message.reply(
                         Config.VERIFIED_TXT,
                         reply_markup=InlineKeyboardMarkup(buttons),
-                        parse_mode="html",
+                        parse_mode=enums.ParseMode.HTML,
                         disable_web_page_preview=True
                     )
                     return
                 else:
                     await message.reply(
                         "❌ <b>Verification token expired or invalid!</b>\n\nPlease use /verify to get a new verification link.",
-                        parse_mode="html"
+                        parse_mode=enums.ParseMode.HTML
                     )
                     return
             
@@ -60,7 +60,7 @@ async def start_command(client, message):
                         await client.send_message(
                             referrer_id,
                             f"🎉 <b>New Referral!</b>\n\nYou earned {REFER_POINT} points!\n\nUser: {first_name} ({user_id})",
-                            parse_mode="html"
+                            parse_mode=enums.ParseMode.HTML
                         )
                     except:
                         pass
@@ -80,7 +80,7 @@ async def start_command(client, message):
                 photo=START_IMG,
                 caption=Config.START_TXT.format(first_name),
                 reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode="html"
+                parse_mode=enums.ParseMode.HTML
             )
         except Exception as e:
             logger.error(f"Error sending photo: {e}")
@@ -88,7 +88,7 @@ async def start_command(client, message):
             await message.reply(
                 Config.START_TXT.format(first_name),
                 reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode="html"
+                parse_mode=enums.ParseMode.HTML
             )
     
     except Exception as e:
@@ -106,7 +106,7 @@ async def help_callback(client, query):
     await query.message.edit(
         Config.HELP_TXT,
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html"
+        parse_mode=enums.ParseMode.HTML
     )
 
 @Client.on_callback_query(filters.regex("^about$"))
@@ -119,10 +119,10 @@ async def about_callback(client, query):
     await query.message.edit(
         Config.ABOUT_TXT.format(me.username),
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html"
+        parse_mode=enums.ParseMode.HTML
     )
 
 @Client.on_callback_query(filters.regex("^close$"))
 async def close_callback(client, query):
     await query.message.delete()
-                    
+        
