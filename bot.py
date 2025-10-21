@@ -1,71 +1,70 @@
-import logging
-import logging.config
-from pyrogram import Client, __version__
-from pyrogram.raw.all import layer
-from database.database import Database
-from info import *
 import asyncio
+import logging
 from aiohttp import web
+from pyrogram import Client, idle
+from info import API_ID, API_HASH, BOT_TOKEN
+from database.verify import VerifyDB
 
-# Enable logging
-logging.config.fileConfig('logging.conf')
-logging.getLogger().setLevel(logging.INFO)
-logging.getLogger("pyrogram").setLevel(logging.ERROR)
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
-# Health check server for Koyeb
-async def health_check(request):
-    return web.Response(text="Bot is running!")
-
-async def start_health_server():
-    """Start health check server on port 8080 for Koyeb"""
-    app = web.Application()
-    app.router.add_get('/', health_check)
-    app.router.add_get('/health', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-    logging.info("Health check server started on port 8080")
+# Initialize database
+verify_db = VerifyDB()
 
 class Bot(Client):
     def __init__(self):
         super().__init__(
-            name="MovieFilterBot",
+            name="MoviesBot",
             api_id=API_ID,
             api_hash=API_HASH,
             bot_token=BOT_TOKEN,
-            workers=50,
-            plugins={"root": "plugins"},
-            sleep_threshold=5,
+            plugins=dict(root="plugins"),
+            sleep_threshold=60
         )
-
+    
     async def start(self):
         await super().start()
-        usr_bot_me = await self.get_me()
-        self.username = usr_bot_me.username
-        self.namebot = usr_bot_me.first_name
-        self.id = usr_bot_me.id
-        await Database().create_index()
-        
-        # Start health check server for Koyeb
-        await start_health_server()
-        
-        logging.info(f"{self.namebot} Started ⚡")
-        logging.info(f"Pyrogram version: {__version__}")
-        logging.info(f"Layer: {layer}")
-        
-        if LOG_CHANNEL:
-            try:
-                await self.send_message(
-                    chat_id=LOG_CHANNEL,
-                    text=f"<b>{self.namebot} Restarted !</b>"
-                )
-            except Exception as e:
-                logging.error(f"Error sending log message: {e}")
-
-    async def stop(self, *args):
+        me = await self.get_me()
+        logger.info(f"✅ Bot started as @{me.username}")
+        logger.info(f"Pyrogram version: {self.__version__}")
+        print("MOVIES MAGIC CLUB Started ⚡")
+    
+    async def stop(self):
         await super().stop()
-        logging.info("Bot Stopped 🛑")
+        logger.info("Bot stopped!")
 
-bot = Bot()
-bot.run()
+# Health check server for Koyeb
+async def health_check(request):
+    return web.Response(text="OK", status=200)
+
+async def start_health_server():
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    app.router.add_get('/', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    logger.info("Health check server started on port 8080")
+
+async def main():
+    # Start health check server
+    await start_health_server()
+    
+    # Start bot
+    bot = Bot()
+    await bot.start()
+    
+    # Keep running
+    await idle()
+    
+    # Stop bot
+    await bot.stop()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
