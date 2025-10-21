@@ -15,14 +15,6 @@ db = Database()
 verify_db = VerifyDB()
 
 
-async def get_imdb_info(query):
-    """Get IMDB info for movie - Returns None if IMDB not configured"""
-    try:
-        return None
-    except:
-        return None
-
-
 async def spell_check(client, message, search):
     """Spell check function for incorrect movie names"""
     try:
@@ -49,17 +41,21 @@ async def auto_filter(client, message):
     
     # Search for files in database
     try:
-        files = await db.search_files(search)
-        logger.info(f"Search results type: {type(files)}, length: {len(files) if files else 0}")
+        result = await db.search_files(search)
+        
+        # Handle tuple response (files, total)
+        if isinstance(result, tuple):
+            files, total = result
+        else:
+            files = result
+            total = len(files) if files else 0
+            
+        logger.info(f"Found {total} files for search: {search}")
+        
     except Exception as e:
         logger.error(f"Database search error: {e}")
         files = []
-    
-    # Handle different return formats
-    if files and isinstance(files, list):
-        # If first element is a list, flatten it
-        if files and isinstance(files[0], list):
-            files = [item for sublist in files for item in sublist]
+        total = 0
     
     if not files:
         if SPELL_CHECK:
@@ -70,13 +66,8 @@ async def auto_filter(client, message):
     btn = []
     for file in files[:10]:  # Limit to 10 results
         try:
-            # Handle both dict and other formats
-            if isinstance(file, dict):
-                file_id = str(file.get('_id', ''))
-                file_name = file.get('file_name', 'Unknown')
-            else:
-                logger.warning(f"Unexpected file format: {type(file)}")
-                continue
+            file_id = str(file.get('_id', ''))
+            file_name = file.get('file_name', 'Unknown')
             
             if file_id:
                 btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
@@ -202,7 +193,7 @@ async def send_file(client, query):
                 
     except Exception as e:
         logger.error(f"Send file error: {e}")
-        await query.answer(f"❌ Error sending file. Check PM permissions!", show_alert=True)
+        await query.answer(f"❌ Error sending file. Check if you started the bot in PM!", show_alert=True)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -213,4 +204,4 @@ async def close_callback(client, query):
         await query.answer("Closed!", show_alert=False)
     except:
         await query.answer("Already closed!", show_alert=False)
-        
+            
