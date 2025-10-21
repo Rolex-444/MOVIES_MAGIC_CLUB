@@ -67,7 +67,7 @@ async def auto_filter(client, message):
     # Apply filters if user has set preferences
     filtered_files = filter_files_by_preference(files, user_id)
     
-    # Build file buttons
+    # Build file buttons WITHOUT folder icon
     btn = []
     for file in filtered_files[:10]:
         try:
@@ -75,15 +75,15 @@ async def auto_filter(client, message):
             file_name = file.get('file_name', 'Unknown')
             
             if file_id:
-                btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
+                # NO FOLDER ICON - just file name
+                btn.append([InlineKeyboardButton(file_name, callback_data=f"file#{file_id}")])
         except Exception as e:
             logger.error(f"Error processing file: {e}")
             continue
     
     if not btn:
-        if SPELL_CHECK:
-            await spell_check(client, message, search)
-        return
+        # Show "no files match filter" message
+        btn.append([InlineKeyboardButton("❌ No files match your filters", callback_data="nofiles")])
     
     # Add filter buttons (Single row - inline horizontal layout)
     filter_row = [
@@ -94,8 +94,8 @@ async def auto_filter(client, message):
     btn.append(filter_row)
     
     # Add pagination if needed
-    if total > 10:
-        pages = (total // 10) + (1 if total % 10 > 0 else 0)
+    if len(filtered_files) > 10:
+        pages = (len(filtered_files) // 10) + (1 if len(filtered_files) % 10 > 0 else 0)
         nav_row = [
             InlineKeyboardButton("📄 PAGES", callback_data="pages_info"),
             InlineKeyboardButton(f"1/{pages}", callback_data="pages_info"),
