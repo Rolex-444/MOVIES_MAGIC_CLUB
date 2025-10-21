@@ -14,10 +14,8 @@ async def start_command(client, message):
     user_id = message.from_user.id
     first_name = message.from_user.first_name
 
-    # Add user to database
     await user_db.add_user(user_id, first_name)
 
-    # Check command args
     if len(message.command) > 1:
         data = message.command[1]
 
@@ -96,5 +94,4 @@ async def send_verification_message(client, message):
         reply_markup=InlineKeyboardMarkup(buttons),
         parse_mode="html",
         disable_web_page_preview=True
-                             )
-                
+                )
