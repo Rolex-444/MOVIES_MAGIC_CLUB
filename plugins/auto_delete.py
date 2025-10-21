@@ -1,20 +1,24 @@
 from pyrogram import Client, filters, enums
 from database.database import Database
-from info import DELETE_CHANNELS, ADMINS  # Changed to DELETE_CHANNELS (plural)
+from info import DELETE_CHANNELS, ADMINS
 import logging
 
 logger = logging.getLogger(__name__)
 db = Database()
 
 
-@Client.on_message(filters.channel & filters.chat(DELETE_CHANNELS))  # Use DELETE_CHANNELS list
+# Convert DELETE_CHANNELS to a filter that works
+def delete_channel_filter(_, __, message):
+    """Custom filter to check if message is from DELETE_CHANNELS"""
+    return message.chat.id in DELETE_CHANNELS
+
+delete_filter = filters.create(delete_channel_filter)
+
+
+@Client.on_message(filters.channel & delete_filter)  # Use custom filter
 async def auto_delete_file(client, message):
     """
     Auto-delete files forwarded to DELETE_CHANNELS
-    When you forward a file to DELETE_CHANNELS, it will be:
-    1. Deleted from MongoDB database
-    2. Deleted from original storage channel
-    3. Deleted from DELETE_CHANNELS itself
     """
     
     # Check if message has media
@@ -30,16 +34,15 @@ async def auto_delete_file(client, message):
     file_id = media.file_id
     file_name = getattr(media, 'file_name', 'Unknown')
     
-    logger.info(f"File forwarded to DELETE_CHANNELS: {file_name} (file_id: {file_id})")
+    logger.info(f"🗑️ File forwarded to DELETE_CHANNELS: {file_name} (file_id: {file_id})")
     
     try:
-        # Step 1: Get file info from database (to get original channel and message ID)
+        # Step 1: Get file info from database
         file_data = await db.get_file_by_file_id(file_id)
         
         if not file_data:
-            # File not in database, just delete from DELETE_CHANNELS
             await message.delete()
-            logger.warning(f"File {file_name} not found in database, deleted from DELETE_CHANNELS only")
+            logger.warning(f"⚠️ File {file_name} not found in database, deleted from DELETE_CHANNELS only")
             return
         
         original_channel = file_data.get('channel_id')
@@ -58,40 +61,36 @@ async def auto_delete_file(client, message):
                     message_ids=original_message_id
                 )
                 channel_deleted = True
-                logger.info(f"Deleted from storage channel: {original_channel}")
+                logger.info(f"✅ Deleted from storage channel: {original_channel}")
             except Exception as e:
-                logger.error(f"Error deleting from storage channel: {e}")
+                logger.error(f"❌ Error deleting from storage channel: {e}")
         
         # Step 4: Delete from DELETE_CHANNELS
         try:
             await message.delete()
-            logger.info(f"Deleted from DELETE_CHANNELS")
+            logger.info(f"✅ Deleted from DELETE_CHANNELS")
         except Exception as e:
-            logger.error(f"Error deleting from DELETE_CHANNELS: {e}")
+            logger.error(f"❌ Error deleting from DELETE_CHANNELS: {e}")
         
         # Log result
         if db_deleted > 0 and channel_deleted:
-            logger.info(f"✅ FULL DELETE SUCCESS: {file_name}")
+            logger.info(f"✅✅✅ FULL DELETE SUCCESS: {file_name}")
         elif db_deleted > 0:
             logger.warning(f"⚠️ PARTIAL DELETE (DB only): {file_name}")
         else:
             logger.error(f"❌ DELETE FAILED: {file_name}")
             
     except Exception as e:
-        logger.error(f"Auto-delete error for {file_name}: {e}")
-        # Still try to delete from DELETE_CHANNELS
+        logger.error(f"❌ Auto-delete error for {file_name}: {e}")
         try:
             await message.delete()
         except:
             pass
 
 
-@Client.on_message(filters.channel & filters.chat(DELETE_CHANNELS) & filters.command("status"))
+@Client.on_message(filters.channel & delete_filter & filters.command("status"))
 async def delete_channel_status(client, message):
-    """
-    Send status message in DELETE_CHANNELS
-    Usage: Send /status in DELETE_CHANNELS
-    """
+    """Status command for DELETE_CHANNELS"""
     
     total_files = await db.total_files_count()
     
