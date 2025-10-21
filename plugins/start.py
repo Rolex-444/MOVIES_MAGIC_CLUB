@@ -1,97 +1,128 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from database.users import UserDB
 from database.verify import VerifyDB
+from info import START_IMG, ADMINS
 from config import Config
-from info import START_IMG, VERIFY_EXPIRE, ADMINS
-import time
+import logging
 
-user_db = UserDB()
+logger = logging.getLogger(__name__)
 verify_db = VerifyDB()
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
-    user_id = message.from_user.id
-    first_name = message.from_user.first_name
+    try:
+        user_id = message.from_user.id
+        first_name = message.from_user.first_name
+        
+        logger.info(f"Start command from {user_id}")
+        
+        # Add user to database
+        await verify_db.add_user(user_id, first_name)
+        
+        # Check for deep link parameters
+        if len(message.command) > 1:
+            data = message.command[1]
+            
+            # Handle verification callback
+            if data.startswith("verify_"):
+                token = data.replace("verify_", "")
+                verified_user = await verify_db.verify_token(token)
+                
+                if verified_user:
+                    buttons = [
+                        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
+                        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+                    ]
+                    await message.reply(
+                        Config.VERIFIED_TXT,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                        parse_mode="html",
+                        disable_web_page_preview=True
+                    )
+                    return
+                else:
+                    await message.reply(
+                        "❌ <b>Verification token expired or invalid!</b>\n\nPlease use /verify to get a new verification link.",
+                        parse_mode="html"
+                    )
+                    return
+            
+            # Handle referral
+            elif data.startswith("ref_"):
+                referrer_id = int(data.replace("ref_", ""))
+                if referrer_id != user_id:
+                    # Add points to referrer
+                    from info import REFER_POINT
+                    await verify_db.add_points(referrer_id, REFER_POINT)
+                    await verify_db.increment_referrals(referrer_id)
+                    
+                    try:
+                        await client.send_message(
+                            referrer_id,
+                            f"🎉 <b>New Referral!</b>\n\nYou earned {REFER_POINT} points!\n\nUser: {first_name} ({user_id})",
+                            parse_mode="html"
+                        )
+                    except:
+                        pass
+        
+        # Default start message
+        buttons = [
+            [InlineKeyboardButton("🆘 Help", callback_data="help"),
+             InlineKeyboardButton("ℹ️ About", callback_data="about")],
+            [InlineKeyboardButton("🔐 Verify", callback_data="verify_user"),
+             InlineKeyboardButton("👑 Premium", callback_data="premium")],
+            [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
+            [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+        ]
+        
+        try:
+            await message.reply_photo(
+                photo=START_IMG,
+                caption=Config.START_TXT.format(first_name),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="html"
+            )
+        except Exception as e:
+            logger.error(f"Error sending photo: {e}")
+            # Fallback without image
+            await message.reply(
+                Config.START_TXT.format(first_name),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode="html"
+            )
+    
+    except Exception as e:
+        logger.error(f"Error in start command: {e}")
+        await message.reply("❌ An error occurred. Please try again later.")
 
-    await user_db.add_user(user_id, first_name)
 
-    if len(message.command) > 1:
-        data = message.command[1]
-
-        if data.startswith("verify_"):
-            verify_id = int(data.split("_")[1])
-            if verify_id == user_id:
-                await verify_db.add_user(user_id, VERIFY_EXPIRE)
-                buttons = [
-                    [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
-                    [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
-                ]
-                await message.reply(
-                    Config.VERIFIED_TXT,
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                    parse_mode="html",
-                    disable_web_page_preview=True
-                )
-                return
-
-        elif data.startswith("ref_"):
-            referred_by = int(data.split("_")[1])
-            if referred_by != user_id:
-                from plugins.shortlink import handle_referral
-                await handle_referral(client, user_id, referred_by)
-
-        elif data.startswith("batch_"):
-            batch_id = data.split("_", 1)[1]
-            from plugins.batch import handle_batch
-            await handle_batch(client, message, batch_id)
-            return
-
-        elif data.startswith("file_"):
-            if not await verify_db.is_verified(user_id) and user_id not in ADMINS:
-                await send_verification_message(client, message)
-                return
-
-            file_id = data.split("_")[1]
-            from plugins.filters import send_file_by_id
-            await send_file_by_id(client, message, file_id)
-            return
-
+# Callback handlers
+@Client.on_callback_query(filters.regex("^help$"))
+async def help_callback(client, query):
     buttons = [
-        [InlineKeyboardButton("🆘 Help", callback_data="help"),
-         InlineKeyboardButton("ℹ️ About", callback_data="about")],
-        [InlineKeyboardButton("🔐 Verify", callback_data="verify_user"),
-         InlineKeyboardButton("👑 Premium", callback_data="premium")],
-        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+        [InlineKeyboardButton("🏠 Home", callback_data="start")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
-
-    await message.reply_photo(
-        photo=START_IMG,
-        caption=Config.START_TXT.format(first_name),
+    await query.message.edit(
+        Config.HELP_TXT,
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html",
-        disable_web_page_preview=True
+        parse_mode="html"
     )
 
-
-async def send_verification_message(client, message):
-    from utils.shortlink_api import get_shortlink
-    from info import SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
-
-    user_id = message.from_user.id
-    verify_url = f"https://t.me/{client.username}?start=verify_{user_id}"
-    short_url = await get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
-
+@Client.on_callback_query(filters.regex("^about$"))
+async def about_callback(client, query):
+    me = await client.get_me()
     buttons = [
-        [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
-        [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
-        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
+        [InlineKeyboardButton("🏠 Home", callback_data="start")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
-
-    await message.reply(
-        Config.VERIFY_TXT,
+    await query.message.edit(
+        Config.ABOUT_TXT.format(me.username),
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html",
-        disable_web_page_preview=True
-                )
+        parse_mode="html"
+    )
+
+@Client.on_callback_query(filters.regex("^close$"))
+async def close_callback(client, query):
+    await query.message.delete()
+                    
