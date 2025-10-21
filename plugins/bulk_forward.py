@@ -3,42 +3,51 @@ from info import ADMINS
 import logging
 import asyncio
 from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
-# Global variable to track forwarding status
 forwarding_active = {}
 
 
 @Client.on_message(filters.command("bulkforward") & filters.user(ADMINS))
 async def bulk_forward_files(client, message):
-    """
-    Bulk forward 3000+ files with flood protection
-    Usage: /bulkforward <from_channel> <to_channel> <start_id> <end_id>
-    Example: /bulkforward -1003000499044 -1009876543210 1 3000
-    """
+    """Bulk forward with better input parsing"""
     
     try:
-        parts = message.text.split()
+        # Clean the message text and remove extra spaces
+        text = message.text.strip()
+        # Split by spaces and filter out empty strings
+        parts = [p.strip() for p in text.split() if p.strip()]
+        
+        logger.info(f"Received command parts: {parts}")
         
         if len(parts) != 5:
             await message.reply(
                 "<b>📤 Bulk Forward Command</b>\n\n"
-                "<b>Usage:</b> /bulkforward <from> <to> <start> <end>\n\n"
-                "<b>Example:</b> /bulkforward -1003000499044 -1009876543210 1 3000\n\n"
-                "<b>Features:</b>\n"
-                "• Auto-resume on failure\n"
-                "• Flood protection\n"
-                "• Real-time progress\n"
-                "• Works for 3000+ files",
+                "<b>Usage:</b> /bulkforward FROM TO START END\n\n"
+                "<b>Example:</b>\n"
+                "<code>/bulkforward -1002498541249 -1003000499044 1 3710</code>\n\n"
+                "<b>Note:</b> Make sure bot is admin in BOTH channels!",
                 parse_mode="HTML"
             )
             return
         
-        from_channel = int(parts[1])
-        to_channel = int(parts[2])
-        start_id = int(parts[3])
-        end_id = int(parts[4])
+        # Parse numbers - handle negative signs properly
+        try:
+            from_channel = int(parts[1])
+            to_channel = int(parts[2])
+            start_id = int(parts[3])
+            end_id = int(parts[4])
+        except ValueError as e:
+            logger.error(f"Parse error: {e}, Parts: {parts}")
+            await message.reply(
+                f"❌ Error parsing numbers!\n\n"
+                f"Received: {parts}\n\n"
+                f"Make sure format is:\n"
+                f"/bulkforward -1002498541249 -1003000499044 1 3710"
+            )
+            return
         
         if start_id > end_id:
             await message.reply("❌ Start ID must be less than End ID!")
@@ -72,8 +81,11 @@ async def bulk_forward_files(client, message):
         last_update = 0
         
         for msg_id in range(start_id, end_id + 1):
+            # Check if user stopped
+            if not forwarding_active.get(message.from_user.id):
+                break
+                
             try:
-                # Forward message
                 await client.forward_messages(
                     chat_id=to_channel,
                     from_chat_id=from_channel,
@@ -81,21 +93,20 @@ async def bulk_forward_files(client, message):
                 )
                 success += 1
                 
-                # Smart delay to avoid flood
-                # Faster for first 100, then slower
+                # Smart delay
                 if success < 100:
-                    await asyncio.sleep(0.3)  # Fast: 200 files/min
+                    await asyncio.sleep(0.3)
                 elif success < 500:
-                    await asyncio.sleep(0.5)  # Medium: 120 files/min
+                    await asyncio.sleep(0.5)
                 else:
-                    await asyncio.sleep(0.7)  # Slow: 85 files/min
+                    await asyncio.sleep(0.7)
                 
-                # Update status every 50 messages
+                # Update every 50 messages
                 if success - last_update >= 50:
                     last_update = success
                     elapsed = (datetime.now() - start_time).seconds
-                    speed = success / max(elapsed, 1) * 60  # Files per minute
-                    remaining = (total - success - failed - skipped)
+                    speed = success / max(elapsed, 1) * 60
+                    remaining = total - success - failed - skipped
                     eta = int(remaining / max(speed, 1))
                     
                     await status_msg.edit_text(
@@ -115,10 +126,14 @@ async def bulk_forward_files(client, message):
             except Exception as e:
                 error_msg = str(e)
                 
-                # Handle specific errors
                 if "FLOOD_WAIT" in error_msg:
                     # Extract wait time
-                    wait_time = int(error_msg.split("_")[2]) if "_" in error_msg else 60
+                    wait_time = 60
+                    try:
+                        wait_time = int(''.join(filter(str.isdigit, error_msg)))
+                    except:
+                        pass
+                    
                     await status_msg.edit_text(
                         f"⚠️ <b>FLOOD WAIT DETECTED</b>\n\n"
                         f"Pausing for {wait_time} seconds...\n"
@@ -138,8 +153,8 @@ async def bulk_forward_files(client, message):
                     except:
                         failed += 1
                 
-                elif "MESSAGE_ID_INVALID" in error_msg or "not found" in error_msg:
-                    skipped += 1  # Message doesn't exist
+                elif "MESSAGE_ID_INVALID" in error_msg or "not found" in error_msg.lower():
+                    skipped += 1
                 else:
                     failed += 1
                     logger.error(f"Error forwarding {msg_id}: {e}")
@@ -160,16 +175,14 @@ async def bulk_forward_files(client, message):
             f"<b>❌ Failed:</b> {failed}\n"
             f"<b>⏭️ Skipped:</b> {skipped}\n\n"
             f"<b>⏱️ Time Taken:</b> {elapsed_min}m {elapsed_sec}s\n"
-            f"<b>📊 Success Rate:</b> {int(success / total * 100)}%",
+            f"<b>📊 Success Rate:</b> {int(success / max(total, 1) * 100)}%",
             parse_mode="HTML"
         )
         
-    except ValueError:
-        await message.reply("❌ Invalid format! Use numbers only.")
     except Exception as e:
         forwarding_active[message.from_user.id] = False
         logger.error(f"Bulk forward error: {e}")
-        await message.reply(f"❌ Error: {e}")
+        await message.reply(f"❌ Error: {str(e)}")
 
 
 @Client.on_message(filters.command("stopforward") & filters.user(ADMINS))
@@ -180,3 +193,4 @@ async def stop_forwarding(client, message):
         await message.reply("⏹️ Forwarding will stop after current message.")
     else:
         await message.reply("❌ No active forwarding task found.")
+        
