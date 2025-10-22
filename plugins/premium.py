@@ -8,7 +8,7 @@ user_db = Database()
 
 # Payment details
 PAYMENT_UPI_ID = "sivaramanc49@okaxis"
-PAYMENT_CHANNEL_LINK = "https://t.me/+wBWU4V4_4dplZGE1"
+PAYMENT_CHANNEL_LINK = "https://t.me/+heQIYvXULRxjOGM1"
 
 @Client.on_message(filters.command("premium") & filters.private)
 async def premium_command(client, message):
