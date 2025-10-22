@@ -53,8 +53,7 @@ except Exception as e:
 logger.info(f"✅ Auto-save enabled for channels: {SAVE_CHANNELS}")
 logger.info(f"⛔ Delete channels (skip save): {DELETE_CHANNEL_LIST}")
 
-
-@Client.on_message(filters.channel)  # REMOVED "& filters.incoming" to catch ALL channel messages
+@Client.on_message(filters.channel) # REMOVED "& filters.incoming" to catch ALL channel messages
 async def save_files(client, message):
     """Save files from storage channels (catches both incoming and copied messages)"""
     
@@ -78,10 +77,12 @@ async def save_files(client, message):
     
     try:
         file_id = media.file_id
+        file_unique_id = media.file_unique_id  # ✅ ADDED: Unique file identifier
         file_ref = getattr(media, 'file_ref', '')
         file_name = getattr(media, 'file_name', '') or message.caption or 'Untitled'
         file_size = media.file_size
         file_type = message.media.value if message.media else 'document'
+        mime_type = getattr(media, 'mime_type', 'unknown')  # ✅ ADDED: MIME type for better handling
         
         # Check if file already exists in database (avoid duplicates)
         existing = await files_collection.find_one({'file_id': file_id})
@@ -92,10 +93,12 @@ async def save_files(client, message):
         # Prepare file document for MongoDB
         file_document = {
             'file_id': file_id,
+            'file_unique_id': file_unique_id,  # ✅ ADDED: For better file tracking
             'file_ref': file_ref,
             'file_name': file_name,
             'file_size': file_size,
             'file_type': file_type,
+            'mime_type': mime_type,  # ✅ ADDED: MIME type
             'caption': message.caption or '',
             'chat_id': message.chat.id,
             'message_id': message.id
@@ -106,6 +109,7 @@ async def save_files(client, message):
         
         if result.inserted_id:
             logger.info(f"✅ Auto-saved: {file_name[:50]} (ID: {file_id[:20]}...)")
-        
+            
     except Exception as e:
         logger.error(f"❌ Error saving file: {e}")
+        
