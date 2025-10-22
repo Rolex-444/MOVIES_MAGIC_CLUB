@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS, STREAM_URL
+from info import ADMINS
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,6 @@ async def handle_file_request(client, message):
     if user_id not in ADMINS:
         can_access = await verify_db.can_access_file(user_id)
         if not can_access:
-            # Send verification message
             buttons = [[InlineKeyboardButton("🔐 Verify to Access", callback_data="verify_user")]]
             await message.reply(
                 "❌ **Access Denied!**\n\nYou need to verify first to access files.",
@@ -44,7 +43,7 @@ async def handle_file_request(client, message):
         
         # Extract file info
         telegram_file_id = file_data.get('file_id')
-        mongo_id = str(file_data.get('_id'))  # ✅ Get MongoDB _id for callback
+        mongo_id = str(file_data.get('_id'))
         file_name = file_data.get('file_name', 'Unknown')
         file_size = file_data.get('file_size', 0)
         file_type = file_data.get('file_type', 'document')
@@ -52,9 +51,8 @@ async def handle_file_request(client, message):
         
         size_str = get_size(file_size)
         
-        # === STREAMING BUTTONS (using short MongoDB _id instead of long file_id) ===
+        # ✅ SIMPLE BUTTONS - No streaming (users can download from Telegram)
         buttons = [
-            [InlineKeyboardButton("🎬 Watch Online", callback_data=f"stream#{mongo_id}")],  # ✅ FIXED: Use mongo_id
             [InlineKeyboardButton("🔞 18+ Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
             [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
         ]
@@ -97,49 +95,6 @@ async def handle_file_request(client, message):
         await message.reply("❌ Error loading file!")
 
 
-@Client.on_callback_query(filters.regex(r"^stream#"))
-async def stream_file(client, query: CallbackQuery):
-    """Generate streaming link"""
-    try:
-        mongo_id = query.data.split("#")[1]
-        
-        # Get file from database using MongoDB _id
-        file_data = await db.get_file(ObjectId(mongo_id))
-        
-        if not file_data:
-            await query.answer("❌ File not found!", show_alert=True)
-            return
-        
-        telegram_file_id = file_data.get('file_id')
-        file_name = file_data.get('file_name', 'Unknown')
-        
-        # Generate stream link using MongoDB _id (shorter!)
-        stream_link = f"{STREAM_URL}?file={mongo_id}"
-        
-        buttons = [
-            [InlineKeyboardButton("📺 Open Player", url=stream_link)],
-            [InlineKeyboardButton("🔙 Back", callback_data="close_stream")]
-        ]
-        
-        await query.message.reply(
-            f"🎬 **Watch Online**\n\n**{file_name}**\n\nClick the button below to open the video player:",
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-        
-        await query.answer("✅ Opening player...")
-        
-    except Exception as e:
-        logger.error(f"Stream error: {e}")
-        await query.answer("❌ Error generating stream!", show_alert=True)
-
-
-@Client.on_callback_query(filters.regex(r"^close_stream$"))
-async def close_stream(client, query: CallbackQuery):
-    """Close streaming message"""
-    await query.message.delete()
-    await query.answer("Closed!")
-
-
 def get_size(size_bytes):
     """Convert bytes to human readable format"""
     if size_bytes == 0:
@@ -150,4 +105,4 @@ def get_size(size_bytes):
         size_bytes /= 1024.
         i += 1
     return f"{size_bytes:.2f} {size_name[i]}"
-        
+            
