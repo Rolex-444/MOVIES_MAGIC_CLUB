@@ -1,15 +1,17 @@
 from pyrogram import Client, filters, enums
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS
+from info import ADMINS, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL
+from utils.shortlink_api import get_shortlink, generate_verify_token
+from config import Config
 import logging
 
 logger = logging.getLogger(__name__)
+
 db = Database()
 verify_db = VerifyDB()
-
 
 @Client.on_message(filters.command("start") & filters.private & filters.regex(r"^/start file_"))
 async def handle_file_request(client, message):
@@ -25,13 +27,34 @@ async def handle_file_request(client, message):
     # Check verification (admins bypass)
     if user_id not in ADMINS:
         can_access = await verify_db.can_access_file(user_id)
+        
         if not can_access:
-            buttons = [[InlineKeyboardButton("🔐 Verify to Access", callback_data="verify_user")]]
+            # ✅ FIXED: Generate shortlink verification
+            token = generate_verify_token()
+            await verify_db.set_verify_token(user_id, token, 600)
+            
+            me = await client.get_me()
+            verify_url = f"https://t.me/{me.username}?start=verify_{token}"
+            short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
+            
+            buttons = [
+                [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
+                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
+                [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
+            ]
+            
             await message.reply(
-                "❌ **Access Denied!**\n\nYou need to verify first to access files.",
-                reply_markup=InlineKeyboardMarkup(buttons)
+                Config.VERIFY_TXT,
+                reply_markup=InlineKeyboardMarkup(buttons),
+                parse_mode=enums.ParseMode.HTML,
+                disable_web_page_preview=True
             )
             return
+        
+        # ✅ FIXED: Increment file attempts for non-verified users
+        if not await verify_db.is_verified(user_id):
+            await verify_db.increment_file_attempts(user_id)
+            logger.info(f"File attempt incremented for user {user_id}")
     
     try:
         # Get file from database
@@ -43,15 +66,13 @@ async def handle_file_request(client, message):
         
         # Extract file info
         telegram_file_id = file_data.get('file_id')
-        mongo_id = str(file_data.get('_id'))
         file_name = file_data.get('file_name', 'Unknown')
         file_size = file_data.get('file_size', 0)
         file_type = file_data.get('file_type', 'document')
         caption = file_data.get('caption', '')
-        
         size_str = get_size(file_size)
         
-        # ✅ SIMPLE BUTTONS - No streaming (users can download from Telegram)
+        # Build buttons
         buttons = [
             [InlineKeyboardButton("🔞 18+ Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
             [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
@@ -89,7 +110,7 @@ async def handle_file_request(client, message):
         except Exception as e:
             logger.error(f"Failed to send file {telegram_file_id}: {e}")
             await message.reply("❌ Error sending file. File may be deleted from Telegram!")
-    
+            
     except Exception as e:
         logger.error(f"Error: {e}")
         await message.reply("❌ Error loading file!")
