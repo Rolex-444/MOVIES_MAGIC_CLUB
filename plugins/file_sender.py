@@ -44,6 +44,7 @@ async def handle_file_request(client, message):
         
         # Extract file info
         telegram_file_id = file_data.get('file_id')
+        mongo_id = str(file_data.get('_id'))  # ✅ Get MongoDB _id for callback
         file_name = file_data.get('file_name', 'Unknown')
         file_size = file_data.get('file_size', 0)
         file_type = file_data.get('file_type', 'document')
@@ -51,9 +52,9 @@ async def handle_file_request(client, message):
         
         size_str = get_size(file_size)
         
-        # === STREAMING BUTTONS ===
+        # === STREAMING BUTTONS (using short MongoDB _id instead of long file_id) ===
         buttons = [
-            [InlineKeyboardButton("🎬 Watch Online", callback_data=f"stream#{telegram_file_id}")],
+            [InlineKeyboardButton("🎬 Watch Online", callback_data=f"stream#{mongo_id}")],  # ✅ FIXED: Use mongo_id
             [InlineKeyboardButton("🔞 18+ Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
             [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
         ]
@@ -85,7 +86,7 @@ async def handle_file_request(client, message):
                     parse_mode=enums.ParseMode.MARKDOWN
                 )
             
-            logger.info(f"File sent: {file_name} to user {user_id}")
+            logger.info(f"✅ File sent: {file_name} to user {user_id}")
             
         except Exception as e:
             logger.error(f"Failed to send file {telegram_file_id}: {e}")
@@ -100,17 +101,20 @@ async def handle_file_request(client, message):
 async def stream_file(client, query: CallbackQuery):
     """Generate streaming link"""
     try:
-        file_id = query.data.split("#")[1]
+        mongo_id = query.data.split("#")[1]
         
-        # Get file details
-        file_info = await client.get_messages(query.message.chat.id, query.message.id)
+        # Get file from database using MongoDB _id
+        file_data = await db.get_file(ObjectId(mongo_id))
         
-        if not file_info:
+        if not file_data:
             await query.answer("❌ File not found!", show_alert=True)
             return
         
-        # Generate stream link
-        stream_link = f"{STREAM_URL}?file={file_id}"
+        telegram_file_id = file_data.get('file_id')
+        file_name = file_data.get('file_name', 'Unknown')
+        
+        # Generate stream link using MongoDB _id (shorter!)
+        stream_link = f"{STREAM_URL}?file={mongo_id}"
         
         buttons = [
             [InlineKeyboardButton("📺 Open Player", url=stream_link)],
@@ -118,7 +122,7 @@ async def stream_file(client, query: CallbackQuery):
         ]
         
         await query.message.reply(
-            "🎬 **Watch Online**\n\nClick the button below to open the video player:",
+            f"🎬 **Watch Online**\n\n**{file_name}**\n\nClick the button below to open the video player:",
             reply_markup=InlineKeyboardMarkup(buttons)
         )
         
@@ -146,3 +150,4 @@ def get_size(size_bytes):
         size_bytes /= 1024.
         i += 1
     return f"{size_bytes:.2f} {size_name[i]}"
+        
