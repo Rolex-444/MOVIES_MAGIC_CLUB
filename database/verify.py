@@ -149,7 +149,7 @@ class VerifyDB:
             if await self.is_verified(user_id):
                 return True
             
-            # Check daily reset before checking limit
+            # Check daily reset BEFORE checking limit (IMPORTANT!)
             await self.check_and_reset_daily(user_id)
             
             # Re-fetch user after potential reset
@@ -160,8 +160,12 @@ class VerifyDB:
             # Check free file limit
             file_attempts = user.get("file_attempts", 0)
             
+            # Log current attempts for debugging
+            logger.info(f"📊 User {user_id} - file_attempts: {file_attempts}/{FREE_FILE_LIMIT}")
+            
             # User must verify if they've reached the limit
             if file_attempts >= FREE_FILE_LIMIT:
+                logger.info(f"🚫 User {user_id} reached limit, needs verification")
                 return False
             
             return True
@@ -278,7 +282,11 @@ class VerifyDB:
                 {"$inc": {"file_attempts": 1}},
                 upsert=True
             )
-            logger.info(f"✅ File attempts incremented for user {user_id}")
+            
+            # Get updated count for logging
+            user = self.collection.find_one({"user_id": user_id})
+            attempts = user.get("file_attempts", 0) if user else 0
+            logger.info(f"✅ File attempts incremented for user {user_id}: {attempts}/{FREE_FILE_LIMIT}")
             return True
         except Exception as e:
             logger.error(f"❌ Error incrementing attempts for {user_id}: {e}")
@@ -298,10 +306,10 @@ class VerifyDB:
             logger.error(f"❌ Error resetting file attempts for {user_id}: {e}")
             return False
 
-    # ============ DAILY RESET METHODS ============
+    # ============ DAILY RESET METHODS - FIXED ============
     
     async def check_and_reset_daily(self, user_id: int):
-        """Check if daily reset is needed and perform it"""
+        """Check if daily reset is needed and perform it - FIXED"""
         try:
             user = await self.get_user(user_id)
             if not user:
@@ -310,14 +318,35 @@ class VerifyDB:
             now = datetime.now(IST)
             last_reset = user.get("last_reset")
             
+            # Handle first-time users (no last_reset)
+            if last_reset is None:
+                # Set initial last_reset to now, don't reset
+                self.collection.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"last_reset": now}},
+                    upsert=True
+                )
+                logger.info(f"🆕 First reset timestamp set for user {user_id}")
+                return
+            
+            # Convert to date for comparison
             if isinstance(last_reset, datetime):
                 last_reset_date = last_reset.date()
             else:
+                # If not datetime, assume it's today (don't reset)
+                logger.warning(f"⚠️ Invalid last_reset type for user {user_id}: {type(last_reset)}")
                 last_reset_date = now.date()
             
-            if now.date() > last_reset_date:
+            current_date = now.date()
+            
+            # Only reset if it's a NEW day (current_date > last_reset_date)
+            if current_date > last_reset_date:
                 await self.reset_daily_limits(user_id)
-                logger.info(f"✅ Daily reset performed for user {user_id}")
+                logger.info(f"📅 Daily reset performed for user {user_id} (last: {last_reset_date}, now: {current_date})")
+            else:
+                # Same day, no reset needed
+                logger.debug(f"✅ Same day, no reset for user {user_id}")
+            
         except Exception as e:
             logger.error(f"❌ Error checking daily reset for {user_id}: {e}")
 
@@ -468,4 +497,4 @@ class VerifyDB:
         except Exception as e:
             logger.error(f"❌ Error getting premium users: {e}")
             return 0
-        
+    
