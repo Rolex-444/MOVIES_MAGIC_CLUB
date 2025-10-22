@@ -66,3 +66,4 @@ async def handle_fast_download(client, query: CallbackQuery):
     except Exception as e:
         logger.error(f"Error in download handler: {e}")
         await query.answer("❌ Error generating download link!", show_alert=True)
+        
