@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # Initialize database
 db = Database()
 
-# Netlify Stream URL
+# Stream URLs
 STREAM_URL = "https://elegant-pithivier-bc90f4.netlify.app"
 TECHVJ_API = "https://techlinkapi.vercel.app"
 
@@ -28,18 +28,18 @@ async def get_fast_link(terabox_url):
         return terabox_url
 
 
-@Client.on_message(filters.command("start") & filters.private)
-async def handle_deep_link(client, message):
-    if len(message.command) <= 1 or not message.command[1].startswith("file_"):
-        return
-    
-    file_id = message.command[1].replace("file_", "")
-    logger.info(f"File request: {file_id}")
-    
+# === CALLBACK HANDLERS ONLY ===
+
+@Client.on_callback_query(filters.regex(r"^stream_file:"))
+async def handle_stream_file(client, query: CallbackQuery):
+    """Handle file streaming from callback"""
     try:
+        file_id = query.data.split(":", 1)[1]
+        logger.info(f"Stream request for file: {file_id}")
+        
         file_data = await db.get_file(ObjectId(file_id) if len(file_id) == 24 else file_id)
         if not file_data:
-            await message.reply("❌ File not found!")
+            await query.answer("❌ File not found!", show_alert=True)
             return
         
         name = file_data.get('file_name', 'Unknown')
@@ -57,11 +57,12 @@ async def handle_deep_link(client, message):
             [InlineKeyboardButton("🔞 18+ Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
         ]
         
-        await message.reply(msg, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
+        await query.answer("Loading file...")
+        await query.message.reply(msg, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
     
     except Exception as e:
         logger.error(f"Error: {e}")
-        await message.reply("❌ Error loading file!")
+        await query.answer("❌ Error loading file!", show_alert=True)
 
 
 @Client.on_callback_query(filters.regex(r"^st:"))
@@ -86,4 +87,4 @@ async def download_btn(client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚡ Download", url=fast_link)]]))
     except:
         await query.answer("❌ Error!", show_alert=True)
-    
+        
