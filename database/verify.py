@@ -38,7 +38,7 @@ try:
 except ImportError as e:
     logger.error(f"❌ Error importing config: {e}")
     FREE_FILE_LIMIT = 5
-    VERIFY_TOKEN_TIMEOUT = 86400  # 24 hours
+    VERIFY_TOKEN_TIMEOUT = 86400
     PREMIUM_POINT = 1000
     REFER_POINT = 50
 
@@ -50,13 +50,12 @@ class VerifyDB:
         logger.info("✅ VerifyDB initialized")
 
     # ============ USER METHODS ============
-
+    
     async def get_user(self, user_id: int) -> Optional[Dict]:
         """Get user data"""
         try:
             user = self.collection.find_one({"user_id": user_id})
             if not user:
-                # Create new user with default values
                 default_user = {
                     "user_id": user_id,
                     "is_verified": False,
@@ -82,7 +81,7 @@ class VerifyDB:
             existing = self.collection.find_one({"user_id": user_id})
             if existing:
                 return True
-
+            
             user_data = {
                 "user_id": user_id,
                 "is_verified": False,
@@ -95,46 +94,45 @@ class VerifyDB:
                 "last_reset": datetime.now(IST),
                 "created_at": datetime.now(IST)
             }
-
+            
             self.collection.insert_one(user_data)
             logger.info(f"✅ New user added: {user_id}")
-
-            # Reward referrer if exists
+            
             if referred_by:
                 await self.add_points(referred_by, REFER_POINT)
                 logger.info(f"✅ Referral reward given to {referred_by}")
-
+            
             return True
         except Exception as e:
             logger.error(f"❌ Error adding user {user_id}: {e}")
             return False
 
     # ============ VERIFICATION METHODS ============
-
+    
     async def is_verified(self, user_id: int) -> bool:
         """Check if user is verified and not expired - FIXED"""
         try:
             user = await self.get_user(user_id)
             if not user:
                 return False
-
+            
             # Premium users are always verified
             if user.get("is_premium", False):
                 if user.get("premium_expire", 0) > int(datetime.now(IST).timestamp()):
                     return True
-
+            
             # Check verification status with expiry validation
             if user.get("is_verified", False):
                 verify_expire = user.get("verify_expire", 0)
                 current_time = int(datetime.now(IST).timestamp())
-
+                
                 if verify_expire > current_time:
                     return True
                 else:
                     # Expired, automatically reset verification
                     await self.reset_verification(user_id)
                     logger.info(f"⏰ Verification expired for user {user_id}")
-
+            
             return False
         except Exception as e:
             logger.error(f"❌ Error checking verification for {user_id}: {e}")
@@ -146,28 +144,28 @@ class VerifyDB:
             # Premium users can always access
             if await self.is_premium(user_id):
                 return True
-
+            
             # Check if verified and not expired
             if await self.is_verified(user_id):
                 return True
-
+            
             # Check daily reset before checking limit
             await self.check_and_reset_daily(user_id)
-
+            
             # Re-fetch user after potential reset
             user = await self.get_user(user_id)
             if not user:
                 return False
-
+            
             # Check free file limit
             file_attempts = user.get("file_attempts", 0)
-
+            
             # User must verify if they've reached the limit
             if file_attempts >= FREE_FILE_LIMIT:
                 return False
-
+            
             return True
-
+            
         except Exception as e:
             logger.error(f"❌ Error checking file access for {user_id}: {e}")
             return False
@@ -178,15 +176,14 @@ class VerifyDB:
             user = await self.get_user(user_id)
             if not user:
                 return {"verified": False, "expire_at": 0}
-
-            # Check if expired
+            
             verify_expire = user.get("verify_expire", 0)
             current_time = int(datetime.now(IST).timestamp())
-
+            
             if user.get("is_verified", False) and verify_expire <= current_time:
                 await self.reset_verification(user_id)
                 return {"verified": False, "expire_at": 0}
-
+            
             return {
                 "verified": user.get("is_verified", False),
                 "expire_at": verify_expire
@@ -200,7 +197,7 @@ class VerifyDB:
         try:
             current_time = int(datetime.now(IST).timestamp())
             expire_time = current_time + expire_seconds
-
+            
             self.collection.update_one(
                 {"user_id": user_id},
                 {"$set": {
@@ -234,7 +231,7 @@ class VerifyDB:
             return False
 
     # ============ VERIFICATION TOKEN METHODS ============
-
+    
     async def set_verify_token(self, user_id: int, token: str, expire_seconds: int = 600):
         """Store verification token (for shortlink verification)"""
         try:
@@ -258,22 +255,21 @@ class VerifyDB:
             user = self.collection.find_one({"verify_token": token})
             if not user:
                 return None
-
-            # Check if token expired
+            
             current_time = int(datetime.now(IST).timestamp())
             token_expire = user.get("token_expire", 0)
-
+            
             if token_expire <= current_time:
                 logger.info(f"⏰ Token expired for user {user.get('user_id')}")
                 return None
-
+            
             return user.get("user_id")
         except Exception as e:
             logger.error(f"❌ Error verifying token: {e}")
             return None
 
     # ============ FILE ATTEMPTS METHODS ============
-
+    
     async def increment_file_attempts(self, user_id: int):
         """Increment file access attempts"""
         try:
@@ -303,24 +299,22 @@ class VerifyDB:
             return False
 
     # ============ DAILY RESET METHODS ============
-
+    
     async def check_and_reset_daily(self, user_id: int):
         """Check if daily reset is needed and perform it"""
         try:
             user = await self.get_user(user_id)
             if not user:
                 return
-
+            
             now = datetime.now(IST)
             last_reset = user.get("last_reset")
-
-            # Handle both datetime and None values
+            
             if isinstance(last_reset, datetime):
                 last_reset_date = last_reset.date()
             else:
                 last_reset_date = now.date()
-
-            # If it's a new day, reset daily limits
+            
             if now.date() > last_reset_date:
                 await self.reset_daily_limits(user_id)
                 logger.info(f"✅ Daily reset performed for user {user_id}")
@@ -346,27 +340,26 @@ class VerifyDB:
             return False
 
     # ============ PREMIUM METHODS ============
-
+    
     async def is_premium(self, user_id: int) -> bool:
         """Check if user has active premium"""
         try:
             user = await self.get_user(user_id)
             if not user:
                 return False
-
+            
             if user.get("is_premium", False):
                 premium_expire = user.get("premium_expire", 0)
                 current_time = int(datetime.now(IST).timestamp())
-
+                
                 if premium_expire > current_time:
                     return True
                 else:
-                    # Premium expired, reset status
                     self.collection.update_one(
                         {"user_id": user_id},
                         {"$set": {"is_premium": False}}
                     )
-
+            
             return False
         except Exception as e:
             logger.error(f"❌ Error checking premium for {user_id}: {e}")
@@ -376,17 +369,14 @@ class VerifyDB:
         """Add premium to user"""
         try:
             current_time = int(datetime.now(IST).timestamp())
-
-            # Get current premium expiry
             user = await self.get_user(user_id)
             current_expire = user.get("premium_expire", 0) if user else 0
-
-            # If already premium, extend from current expiry
+            
             if current_expire > current_time:
                 new_expire = current_expire + duration_seconds
             else:
                 new_expire = current_time + duration_seconds
-
+            
             self.collection.update_one(
                 {"user_id": user_id},
                 {"$set": {
@@ -402,7 +392,7 @@ class VerifyDB:
             return False
 
     # ============ POINTS METHODS ============
-
+    
     async def get_points(self, user_id: int) -> int:
         """Get user points"""
         try:
@@ -431,10 +421,10 @@ class VerifyDB:
         try:
             user = await self.get_user(user_id)
             current_points = user.get("points", 0) if user else 0
-
+            
             if current_points < points:
                 return False
-
+            
             self.collection.update_one(
                 {"user_id": user_id},
                 {"$inc": {"points": -points}}
@@ -446,7 +436,7 @@ class VerifyDB:
             return False
 
     # ============ STATS METHODS ============
-
+    
     async def total_users(self) -> int:
         """Get total number of users"""
         try:
@@ -478,3 +468,4 @@ class VerifyDB:
         except Exception as e:
             logger.error(f"❌ Error getting premium users: {e}")
             return 0
+        
