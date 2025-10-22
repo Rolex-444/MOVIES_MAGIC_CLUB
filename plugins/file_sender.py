@@ -48,10 +48,13 @@ async def handle_file_request(client, message):
         size = file_data.get('file_size', 0)
         link = file_data.get('file_link', '')
         caption = file_data.get('caption', '')
+        telegram_file_id = file_data.get('file_id')  # Get Telegram file ID
+        file_type = file_data.get('file_type', 'document')
         
         size_str = f"{size/(1024**3):.2f} GB" if size > 1073741824 else f"{size/(1024**2):.2f} MB"
         
-        msg = f"**File Name:** {name}\n\n**Size:** {size_str}\n\n{caption}\n\n{link}\n\n**Join:** @movies_magic_club3\n**Owner:** @Siva9789"
+        # Build caption
+        msg = f"**{name}**\n\n📊 **Size:** {size_str}\n\n{caption}\n\n🔗 {link}\n\n**Join:** @movies_magic_club3\n**Owner:** @Siva9789"
         
         # === STREAMING BUTTONS ===
         buttons = [
@@ -61,6 +64,28 @@ async def handle_file_request(client, message):
             [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
         ]
         
+        # Send actual Telegram file if file_id exists
+        if telegram_file_id:
+            try:
+                if file_type == 'video':
+                    await message.reply_video(
+                        telegram_file_id,
+                        caption=msg,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                        parse_mode=enums.ParseMode.MARKDOWN
+                    )
+                else:
+                    await message.reply_document(
+                        telegram_file_id,
+                        caption=msg,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                        parse_mode=enums.ParseMode.MARKDOWN
+                    )
+                return
+            except Exception as e:
+                logger.error(f"Failed to send file: {e}")
+        
+        # Fallback: send text message if file sending fails
         await message.reply(msg, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
     
     except Exception as e:
@@ -90,3 +115,4 @@ async def download_btn(client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚡ Download", url=fast_link)]]))
     except:
         await query.answer("❌ Error!", show_alert=True)
+        
