@@ -1,12 +1,15 @@
 from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from database import db
+from database.database import Database
 from bson import ObjectId
 from urllib.parse import quote
 import aiohttp
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Initialize database
+db = Database()
 
 # Netlify Stream URL
 STREAM_URL = "https://elegant-pithivier-bc90f4.netlify.app"
@@ -83,4 +86,4 @@ async def download_btn(client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚡ Download", url=fast_link)]]))
     except:
         await query.answer("❌ Error!", show_alert=True)
-        
+    
