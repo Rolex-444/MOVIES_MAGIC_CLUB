@@ -22,14 +22,16 @@ async def handle_file_request(client, message):
         return
     
     user_id = message.from_user.id
-    logger.info(f"File request from {user_id}: {file_id_str}")
+    logger.info(f"📥 File request from {user_id}: {file_id_str}")
     
-    # Check verification (admins bypass)
+    # Check verification (admins bypass all checks)
     if user_id not in ADMINS:
+        # Check if user can access files
         can_access = await verify_db.can_access_file(user_id)
+        logger.info(f"🔐 User {user_id} access check: {can_access}")
         
         if not can_access:
-            # ✅ FIXED: Generate shortlink verification
+            # User needs to verify - Generate shortlink
             token = generate_verify_token()
             await verify_db.set_verify_token(user_id, token, 600)
             
@@ -43,6 +45,8 @@ async def handle_file_request(client, message):
                 [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
             ]
             
+            logger.info(f"⚠️ User {user_id} needs verification - showing shortlink")
+            
             await message.reply(
                 Config.VERIFY_TXT,
                 reply_markup=InlineKeyboardMarkup(buttons),
@@ -51,26 +55,43 @@ async def handle_file_request(client, message):
             )
             return
         
-        # ✅ FIXED: Increment file attempts for non-verified users
+        # Increment file attempts for non-verified users (free users)
         if not await verify_db.is_verified(user_id):
             await verify_db.increment_file_attempts(user_id)
-            logger.info(f"File attempt incremented for user {user_id}")
+            
+            # Get current attempts for logging
+            user = await verify_db.get_user(user_id)
+            attempts = user.get("file_attempts", 0) if user else 0
+            logger.info(f"📊 User {user_id} file attempts: {attempts}/5")
     
+    # Get file from database
     try:
-        # Get file from database
-        file_data = await db.get_file(ObjectId(file_id_str) if len(file_id_str) == 24 else file_id_str)
+        # Convert to ObjectId if it's a valid MongoDB ID
+        if len(file_id_str) == 24:
+            file_data = await db.get_file(ObjectId(file_id_str))
+        else:
+            file_data = await db.get_file(file_id_str)
         
         if not file_data:
-            await message.reply("❌ File not found!")
+            logger.error(f"❌ File not found: {file_id_str}")
+            await message.reply(
+                "❌ <b>File not found!</b>\n\nThis file may have been deleted.",
+                parse_mode=enums.ParseMode.HTML
+            )
             return
         
-        # Extract file info
+        # Extract file information
         telegram_file_id = file_data.get('file_id')
         file_name = file_data.get('file_name', 'Unknown')
         file_size = file_data.get('file_size', 0)
         file_type = file_data.get('file_type', 'document')
         caption = file_data.get('caption', '')
+        
+        # Format file size
         size_str = get_size(file_size)
+        
+        # Build caption
+        file_caption = f"**📁 {file_name}**\n\n**📊 Size:** {size_str}\n\n{caption}\n\n**Join:** @movies_magic_club3\n**Owner:** @Siva9789"
         
         # Build buttons
         buttons = [
@@ -78,10 +99,7 @@ async def handle_file_request(client, message):
             [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
         ]
         
-        # Build caption
-        file_caption = f"**📁 {file_name}**\n\n**📊 Size:** {size_str}\n\n{caption}\n\n**Join:** @movies_magic_club3\n**Owner:** @Siva9789"
-        
-        # Send actual Telegram file with buttons
+        # Send file based on type
         try:
             if file_type == 'video':
                 await message.reply_video(
@@ -108,12 +126,18 @@ async def handle_file_request(client, message):
             logger.info(f"✅ File sent: {file_name} to user {user_id}")
             
         except Exception as e:
-            logger.error(f"Failed to send file {telegram_file_id}: {e}")
-            await message.reply("❌ Error sending file. File may be deleted from Telegram!")
+            logger.error(f"❌ Failed to send file {telegram_file_id}: {e}")
+            await message.reply(
+                "❌ <b>Error sending file!</b>\n\nFile may be deleted from Telegram servers.",
+                parse_mode=enums.ParseMode.HTML
+            )
             
     except Exception as e:
-        logger.error(f"Error: {e}")
-        await message.reply("❌ Error loading file!")
+        logger.error(f"❌ Error processing file request: {e}")
+        await message.reply(
+            "❌ <b>Error loading file!</b>\n\nPlease try again later.",
+            parse_mode=enums.ParseMode.HTML
+        )
 
 
 def get_size(size_bytes):
