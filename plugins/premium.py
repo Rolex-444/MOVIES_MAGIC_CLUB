@@ -1,4 +1,4 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from database.database import Database
 from info import PREMIUM_POINT, REFER_POINT
@@ -6,9 +6,9 @@ import time
 
 user_db = Database()
 
-# Payment details - Add these to your info.py
-PAYMENT_UPI_ID = "sivaramanc49@okaxis"  # Your UPI ID
-PAYMENT_CHANNEL_LINK = "https://t.me/+wBWU4V4_4dplZGE1"  # Your payment verification channel link
+# Payment details
+PAYMENT_UPI_ID = "sivaramanc49@okaxis"
+PAYMENT_CHANNEL_LINK = "https://t.me/+wBWU4V4_4dplZGE1"
 
 @Client.on_message(filters.command("premium") & filters.private)
 async def premium_command(client, message):
@@ -42,7 +42,7 @@ Channel: @movies_magic_club3
             [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
             [InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
-        await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="markdown")
+        await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
         return
     
     # Show premium options
@@ -83,7 +83,7 @@ Get {PREMIUM_POINT} points = 1 month free!
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
-    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="markdown")
+    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
 
 
 @Client.on_callback_query(filters.regex("^premium$"))
@@ -110,7 +110,7 @@ async def buy_premium(client, query):
     caption = f"""
 💳 **Payment for Premium - {duration_text}**
 
-💰 Please pay **₹{price}** via UPI to the below ID or scan the attached QR code.
+💰 Please pay **₹{price}** via UPI to the below ID.
 
 **UPI ID:** `{PAYMENT_UPI_ID}`
 
@@ -123,13 +123,13 @@ Thank you for supporting! 💎
     
     buttons = [
         [InlineKeyboardButton("📤 Send Payment Proof", url=PAYMENT_CHANNEL_LINK)],
-        [InlineKeyboardButton("❌ Cancel", callback_data="close")]
+        [InlineKeyboardButton("❌ Cancel", callback_data="premium")]
     ]
     
     await query.message.edit(
         caption,
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="markdown"
+        parse_mode=enums.ParseMode.MARKDOWN
     )
 
 
@@ -165,7 +165,7 @@ Join: @movies_magic_club3
         [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
     ]
     
-    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode="markdown")
+    await message.reply(text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.MARKDOWN)
 
 
 @Client.on_callback_query(filters.regex("^referral_info$"))
@@ -194,6 +194,6 @@ async def redeem_premium(client, query):
     await query.message.edit(
         "🎉 **Congratulations!**\n\nYour premium has been activated for 30 days!\n\nEnjoy unlimited access! 💎",
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="markdown"
-    )
+        parse_mode=enums.ParseMode.MARKDOWN
+)
     
