@@ -88,6 +88,10 @@ FILE_CAPTION_TEMPLATE = environ.get("FILE_CAPTION_TEMPLATE", """
 # Payment channel for UPI verification
 PAYMENT_CHANNEL = int(environ.get("PAYMENT_CHANNEL", "-1003037490791"))
 
+# Payment settings
+PAYMENT_UPI_ID = environ.get("PAYMENT_UPI_ID", "sivaramanc49@okaxis")
+PAYMENT_CHANNEL_LINK = environ.get("PAYMENT_CHANNEL_LINK", "https://t.me/+heQIYvXULRxjOGM1")
+
 # QR code image for UPI payments
 UPI_QR_CODE = environ.get("UPI_QR_CODE", "IMG_20251021_083257.jpg")
 UPI_ID = environ.get("UPI_ID", "sivaramanc49@okaxis")
