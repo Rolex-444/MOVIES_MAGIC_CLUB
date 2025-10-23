@@ -1,8 +1,6 @@
 """
 Movie Filter Bot - Verification Database Module
-WITH DAILY RESET SYSTEM (Resets at 12:00 AM IST)
-Tracks user verification, free limits, premium, and points
-FIXED: Removed automatic daily reset from file access check
+WITH EXTENSIVE DEBUGGING - Find verification issues
 """
 
 import os
@@ -43,6 +41,9 @@ except ImportError as e:
     PREMIUM_POINT = 1000
     REFER_POINT = 50
 
+# Log the limit on startup
+logger.info(f"🔧 FREE_FILE_LIMIT set to: {FREE_FILE_LIMIT}")
+
 
 class VerifyDB:
     def __init__(self):
@@ -70,6 +71,7 @@ class VerifyDB:
                     "created_at": datetime.now(IST)
                 }
                 self.collection.insert_one(default_user)
+                logger.info(f"🆕 Created new user: {user_id}")
                 return default_user
             return user
         except Exception as e:
@@ -115,11 +117,15 @@ class VerifyDB:
         try:
             user = await self.get_user(user_id)
             if not user:
+                logger.info(f"🔍 is_verified({user_id}): No user data → False")
                 return False
             
             # Premium users are always verified
             if user.get("is_premium", False):
-                if user.get("premium_expire", 0) > int(datetime.now(IST).timestamp()):
+                premium_expire = user.get("premium_expire", 0)
+                current_time = int(datetime.now(IST).timestamp())
+                if premium_expire > current_time:
+                    logger.info(f"🔍 is_verified({user_id}): Premium user → True")
                     return True
             
             # Check verification status with expiry validation
@@ -127,55 +133,73 @@ class VerifyDB:
                 verify_expire = user.get("verify_expire", 0)
                 current_time = int(datetime.now(IST).timestamp())
                 
+                logger.info(f"🔍 is_verified({user_id}): verify_expire={verify_expire}, current={current_time}")
+                
                 if verify_expire > current_time:
+                    logger.info(f"🔍 is_verified({user_id}): Valid verification → True")
                     return True
                 else:
                     # Expired, automatically reset verification
                     await self.reset_verification(user_id)
-                    logger.info(f"⏰ Verification expired for user {user_id}")
+                    logger.info(f"⏰ Verification expired for user {user_id} → False")
+                    return False
             
+            logger.info(f"🔍 is_verified({user_id}): Not verified → False")
             return False
         except Exception as e:
             logger.error(f"❌ Error checking verification for {user_id}: {e}")
             return False
 
     async def can_access_file(self, user_id: int) -> bool:
-        """Check if user can access file (verified or under free limit) - FINAL FIX"""
+        """Check if user can access file - WITH EXTENSIVE DEBUGGING"""
         try:
-            # Premium users can always access
-            if await self.is_premium(user_id):
-                logger.info(f"👑 User {user_id} is premium - access granted")
+            logger.info(f"")
+            logger.info(f"{'='*60}")
+            logger.info(f"🔍 CHECKING FILE ACCESS FOR USER: {user_id}")
+            logger.info(f"{'='*60}")
+            
+            # Step 1: Check premium
+            is_premium = await self.is_premium(user_id)
+            logger.info(f"📌 Step 1 - Is Premium? {is_premium}")
+            if is_premium:
+                logger.info(f"✅ RESULT: Premium user - ACCESS GRANTED")
+                logger.info(f"{'='*60}")
                 return True
             
-            # Check if verified and not expired
-            if await self.is_verified(user_id):
-                logger.info(f"✅ User {user_id} is verified - access granted")
+            # Step 2: Check verified
+            is_verified = await self.is_verified(user_id)
+            logger.info(f"📌 Step 2 - Is Verified? {is_verified}")
+            if is_verified:
+                logger.info(f"✅ RESULT: Verified user - ACCESS GRANTED")
+                logger.info(f"{'='*60}")
                 return True
             
-            # NOT CALLING check_and_reset_daily() HERE ANYMORE!
-            # Daily reset should happen via a separate scheduled task
-            
-            # Get user data
+            # Step 3: Get user data and check free limit
+            logger.info(f"📌 Step 3 - Checking free file limit...")
             user = await self.get_user(user_id)
             if not user:
+                logger.error(f"❌ RESULT: No user data - ACCESS DENIED")
+                logger.info(f"{'='*60}")
                 return False
             
-            # Check free file limit
+            # Get file attempts
             file_attempts = user.get("file_attempts", 0)
+            logger.info(f"📊 Current file_attempts: {file_attempts}")
+            logger.info(f"📊 FREE_FILE_LIMIT: {FREE_FILE_LIMIT}")
+            logger.info(f"📊 Comparison: {file_attempts} >= {FREE_FILE_LIMIT} = {file_attempts >= FREE_FILE_LIMIT}")
             
-            # Log current attempts for debugging
-            logger.info(f"📊 User {user_id} - Attempts: {file_attempts}/{FREE_FILE_LIMIT}")
-            
-            # User must verify if they've reached the limit
             if file_attempts >= FREE_FILE_LIMIT:
-                logger.info(f"🚫 User {user_id} reached free limit - verification required")
+                logger.info(f"❌ RESULT: Limit reached ({file_attempts}/{FREE_FILE_LIMIT}) - ACCESS DENIED")
+                logger.info(f"{'='*60}")
                 return False
             
-            logger.info(f"✅ User {user_id} - Access granted (free file)")
+            logger.info(f"✅ RESULT: Free file allowed ({file_attempts}/{FREE_FILE_LIMIT}) - ACCESS GRANTED")
+            logger.info(f"{'='*60}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Error checking file access for {user_id}: {e}")
+            logger.error(f"❌ ERROR in can_access_file: {e}")
+            logger.info(f"{'='*60}")
             return False
 
     async def get_verify_status(self, user_id: int) -> Dict:
@@ -214,7 +238,7 @@ class VerifyDB:
                 }},
                 upsert=True
             )
-            logger.info(f"✅ Verification added for user {user_id}, expires at {expire_time}")
+            logger.info(f"✅ Verification added for user {user_id}, expires at {expire_time} ({expire_seconds}s)")
             return True
         except Exception as e:
             logger.error(f"❌ Error adding verification for {user_id}: {e}")
@@ -228,7 +252,7 @@ class VerifyDB:
                 {"$set": {
                     "is_verified": False,
                     "verify_expire": 0,
-                    "file_attempts": 0  # Also reset file attempts
+                    "file_attempts": 0
                 }},
                 upsert=True
             )
@@ -279,18 +303,32 @@ class VerifyDB:
     # ============ FILE ATTEMPTS METHODS ============
     
     async def increment_file_attempts(self, user_id: int):
-        """Increment file access attempts"""
+        """Increment file access attempts - WITH EXTENSIVE DEBUGGING"""
         try:
-            self.collection.update_one(
+            # Get current count BEFORE increment
+            user_before = self.collection.find_one({"user_id": user_id})
+            before_count = user_before.get("file_attempts", 0) if user_before else 0
+            
+            # Perform increment
+            result = self.collection.update_one(
                 {"user_id": user_id},
                 {"$inc": {"file_attempts": 1}},
                 upsert=True
             )
             
-            # Get updated count for logging
-            user = self.collection.find_one({"user_id": user_id})
-            attempts = user.get("file_attempts", 0) if user else 0
-            logger.info(f"📈 User {user_id} attempts incremented: {attempts}/{FREE_FILE_LIMIT}")
+            # Get count AFTER increment
+            user_after = self.collection.find_one({"user_id": user_id})
+            after_count = user_after.get("file_attempts", 0) if user_after else 0
+            
+            logger.info(f"")
+            logger.info(f"📈 FILE ATTEMPT INCREMENT:")
+            logger.info(f"   User: {user_id}")
+            logger.info(f"   Before: {before_count}")
+            logger.info(f"   After: {after_count}")
+            logger.info(f"   Limit: {FREE_FILE_LIMIT}")
+            logger.info(f"   Modified: {result.modified_count}")
+            logger.info(f"   Next file will be: {after_count + 1}/{FREE_FILE_LIMIT}")
+            
             return True
         except Exception as e:
             logger.error(f"❌ Error incrementing attempts for {user_id}: {e}")
@@ -304,19 +342,16 @@ class VerifyDB:
                 {"$set": {"file_attempts": 0}},
                 upsert=True
             )
-            logger.info(f"✅ File attempts reset for user {user_id}")
+            logger.info(f"✅ File attempts reset to 0 for user {user_id}")
             return True
         except Exception as e:
             logger.error(f"❌ Error resetting file attempts for {user_id}: {e}")
             return False
 
-    # ============ DAILY RESET METHODS (Keep for manual use) ============
+    # ============ DAILY RESET METHODS ============
     
     async def check_and_reset_daily(self, user_id: int):
-        """
-        Check if daily reset is needed and perform it
-        NOTE: This should be called by a scheduler, NOT during file access!
-        """
+        """Check if daily reset is needed - NOT CALLED AUTOMATICALLY"""
         try:
             user = await self.get_user(user_id)
             if not user:
@@ -494,4 +529,4 @@ class VerifyDB:
         except Exception as e:
             logger.error(f"❌ Error getting premium users: {e}")
             return 0
-            
+    
