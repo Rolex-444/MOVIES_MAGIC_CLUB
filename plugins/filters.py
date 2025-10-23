@@ -40,18 +40,13 @@ async def start_command(client, message):
             file_id = data.split("_", 1)[1]
             await send_file_by_deeplink(client, message, file_id)
             return
-        
-        # Verification token link
-        elif data.startswith("verify_"):
-            # Handle verification
-            return
     
     # Regular /start command
-    await message.reply("Welcome to the bot!")
+    await message.reply("Welcome! Search for movies in the group.")
 
 
 async def send_file_by_deeplink(client, message, file_id):
-    """Send file when accessed via deep link - WITH EXTENSIVE DEBUGGING"""
+    """Send file when accessed via deep link - WITH DEBUGGING"""
     user_id = message.from_user.id
     
     logger.info(f"")
@@ -68,7 +63,7 @@ async def send_file_by_deeplink(client, message, file_id):
     if user_id not in ADMINS:
         logger.info(f"✅ User {user_id} is NOT admin - checking verification...")
         
-        # Check if user can access file (verified or under free limit)
+        # Check if user can access file
         can_access = await verify_db.can_access_file(user_id)
         
         logger.info(f"🔍 can_access_file returned: {can_access}")
@@ -86,8 +81,7 @@ async def send_file_by_deeplink(client, message, file_id):
             
             buttons = [
                 [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
-                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
-                [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
+                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)]
             ]
             
             await message.reply(
@@ -107,16 +101,16 @@ async def send_file_by_deeplink(client, message, file_id):
         logger.info(f"🔍 is_verified returned: {is_verified}")
         
         if not is_verified:
-            logger.info(f"📈 Incrementing file attempts for non-verified user")
+            logger.info(f"📈 Incrementing file attempts")
             await verify_db.increment_file_attempts(user_id)
         else:
-            logger.info(f"✅ User is verified - NOT incrementing attempts")
+            logger.info(f"✅ User verified - NOT incrementing")
     else:
-        logger.info(f"👑 User {user_id} IS ADMIN - bypassing all checks")
+        logger.info(f"👑 User IS ADMIN - bypassing all checks")
     
     logger.info(f"📤 Fetching file from database...")
     
-    # Get file data from database
+    # Get file data
     try:
         if len(file_id) == 24:
             mongo_id = ObjectId(file_id)
@@ -126,12 +120,12 @@ async def send_file_by_deeplink(client, message, file_id):
         file_data = await db.get_file(mongo_id)
         
     except Exception as e:
-        logger.error(f"❌ Error getting file {file_id}: {e}")
+        logger.error(f"❌ Error getting file: {e}")
         file_data = None
     
     if not file_data:
-        logger.error(f"❌ File not found: {file_id}")
-        await message.reply("❌ <b>File not found!</b>", parse_mode=enums.ParseMode.HTML)
+        logger.error(f"❌ File not found")
+        await message.reply("❌ File not found!")
         logger.info(f"{'='*70}")
         return
     
@@ -147,41 +141,23 @@ async def send_file_by_deeplink(client, message, file_id):
         caption = f"<b>{file_data.get('file_name', 'File')}</b>\n\nJoin: @movies_magic_club3"
     
     # Build buttons
-    file_buttons = [
-        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
-    ]
+    file_buttons = [[InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]]
     
     # Send file
     try:
         telegram_file_id = file_data.get('file_id')
         file_type = file_data.get('file_type', 'document')
         
-        logger.info(f"📤 Sending file: {file_data.get('file_name')}, type: {file_type}")
+        logger.info(f"📤 Sending file: {file_data.get('file_name')}")
         
         if file_type == 'video':
-            await message.reply_video(
-                telegram_file_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(file_buttons),
-                parse_mode=enums.ParseMode.HTML
-            )
+            await message.reply_video(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
         elif file_type == 'audio':
-            await message.reply_audio(
-                telegram_file_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(file_buttons),
-                parse_mode=enums.ParseMode.HTML
-            )
+            await message.reply_audio(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
         else:
-            await message.reply_document(
-                telegram_file_id,
-                caption=caption,
-                reply_markup=InlineKeyboardMarkup(file_buttons),
-                parse_mode=enums.ParseMode.HTML
-            )
+            await message.reply_document(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
         
-        logger.info(f"✅ File sent successfully to user {user_id}")
+        logger.info(f"✅ File sent successfully")
         logger.info(f"{'='*70}")
         
     except Exception as e:
@@ -190,13 +166,75 @@ async def send_file_by_deeplink(client, message, file_id):
         logger.info(f"{'='*70}")
 
 
-@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "about"]))
-async def search_files(client, message):
-    """Handle movie search"""
-    search = message.text
+@Client.on_message(filters.text & filters.group & ~filters.command(["start"]))
+async def group_search(client, message):
+    """Handle movie search in GROUPS"""
+    search = message.text.strip()
+    
+    # Ignore very short searches
+    if len(search) < 3:
+        return
+    
+    logger.info(f"🔍 Group search from {message.from_user.id}: {search}")
+    
+    # Search in database
+    files, total = await db.search_files(search)
+    
+    if not files:
+        logger.info(f"❌ No results for: {search}")
+        return
+    
+    # Get bot username
+    global bot_username
+    if not bot_username:
+        me = await client.get_me()
+        bot_username = me.username
+    
+    # Build file list with deep links
+    file_text = f"📁 Found {total} files\n\n"
+    
+    for idx, file in enumerate(files[:10], 1):
+        try:
+            file_id = str(file.get('_id', ''))
+            file_name = file.get('file_name', 'Unknown')
+            file_size = get_size(file.get('file_size', 0))
+            
+            # Create deep link
+            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+            
+            # Format as clickable link
+            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+            file_text += f"{clickable_text}\n\n"
+            
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            continue
+    
+    file_text += f"\nJoin: @movies_magic_club3"
+    
+    # Add buttons
+    buttons = [
+        [InlineKeyboardButton("LANGUAGE", callback_data=f"lang#{search}"),
+         InlineKeyboardButton("Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ]
+    
+    await message.reply(
+        file_text,
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=enums.ParseMode.HTML,
+        disable_web_page_preview=True
+    )
+    logger.info(f"✅ Search results sent")
+
+
+@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help"]))
+async def private_search(client, message):
+    """Handle movie search in PRIVATE chat"""
+    search = message.text.strip()
     user_id = message.from_user.id
     
-    logger.info(f"🔍 Search request from {user_id}: {search}")
+    logger.info(f"🔍 Private search from {user_id}: {search}")
     
     # Search in database
     files, total = await db.search_files(search)
@@ -211,46 +249,27 @@ async def search_files(client, message):
         me = await client.get_me()
         bot_username = me.username
     
-    # Build file list with deep links
-    file_text = f"📁 Found {total} files for: {search}\n\n"
+    # Build file list
+    file_text = f"📁 Found {total} files\n\n"
     
-    for idx, file in enumerate(files[:10], 1):
+    for file in files[:10]:
         try:
             file_id = str(file.get('_id', ''))
             file_name = file.get('file_name', 'Unknown')
             file_size = get_size(file.get('file_size', 0))
-            
-            # Create deep link
             deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            
-            # Format as clickable HTML link
             clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
             file_text += f"{clickable_text}\n\n"
-            
         except Exception as e:
-            logger.error(f"Error processing file: {e}")
-            continue
+            logger.error(f"Error: {e}")
     
-    # Add filter buttons
-    buttons = [
-        [
-            InlineKeyboardButton("LANGUAGES", callback_data=f"lang#{search}"),
-            InlineKeyboardButton("Qualitys", callback_data=f"qual#{search}"),
-            InlineKeyboardButton("Season", callback_data=f"seas#{search}")
-        ],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ]
+    buttons = [[InlineKeyboardButton("❌ Close", callback_data="close")]]
     
-    await message.reply(
-        file_text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode=enums.ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    await message.reply(file_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
 async def close_callback(client, query):
     """Handle close button"""
     await query.message.delete()
-        
+            
