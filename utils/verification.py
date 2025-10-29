@@ -1,14 +1,12 @@
 """
 UNIVERSAL Shortlink Verification System
 Works with ANY shortlink service - arolinks, gplinks, shrinkme, etc.
-GOAL: Generate shortlinks that earn you money when users click them
 """
 
 import string
 import random
 import requests
 import logging
-from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +20,21 @@ def create_universal_shortlink(original_url):
     """
     UNIVERSAL shortlink creator
     Tries ALL common API formats until one works
-    GOAL: Create shortlink that earns you money
     """
+    # Import here to avoid circular imports
+    from info import SHORTLINK_URL, SHORTLINK_API
+    
     logger.info(f"🔗 Creating shortlink for: {original_url}")
-    logger.info(f"🌐 Using service: {Config.SHORTLINK_URL}")
-    logger.info(f"🔑 API key: {Config.SHORTLINK_API[:10]}...")
+    logger.info(f"🌐 Using service: {SHORTLINK_URL}")
+    logger.info(f"🔑 API key: {SHORTLINK_API[:10] if SHORTLINK_API else 'NOT SET'}...")
+    
+    # Check if shortlink is configured
+    if not SHORTLINK_URL or not SHORTLINK_API:
+        logger.warning("⚠️ SHORTLINK_URL or SHORTLINK_API not configured! Returning original URL.")
+        return original_url
     
     # Prepare API endpoint
-    api_endpoint = Config.SHORTLINK_URL
+    api_endpoint = SHORTLINK_URL
     if not api_endpoint.startswith('http'):
         api_endpoint = f"https://{api_endpoint}"
     
@@ -38,43 +43,43 @@ def create_universal_shortlink(original_url):
         # Format 1: arolinks.com, gplinks.in style
         {
             "url": f"{api_endpoint}/api",
-            "params": {"api": Config.SHORTLINK_API, "url": original_url}
+            "params": {"api": SHORTLINK_API, "url": original_url}
         },
         # Format 2: shrinkme.io style
         {
             "url": f"{api_endpoint}/api",
-            "params": {"key": Config.SHORTLINK_API, "url": original_url}
+            "params": {"key": SHORTLINK_API, "url": original_url}
         },
         # Format 3: droplink.co style
         {
             "url": f"{api_endpoint}/api",
-            "params": {"api_token": Config.SHORTLINK_API, "url": original_url}
+            "params": {"api_token": SHORTLINK_API, "url": original_url}
         },
         # Format 4: POST request format
         {
             "url": f"{api_endpoint}/api",
-            "data": {"api": Config.SHORTLINK_API, "url": original_url},
+            "data": {"api": SHORTLINK_API, "url": original_url},
             "method": "POST"
         },
         # Format 5: ouo.io style
         {
-            "url": f"{api_endpoint}/api/{Config.SHORTLINK_API}",
+            "url": f"{api_endpoint}/api/{SHORTLINK_API}",
             "params": {"url": original_url}
         },
         # Format 6: adf.ly style
         {
             "url": f"{api_endpoint}/api.php",
-            "params": {"key": Config.SHORTLINK_API, "url": original_url}
+            "params": {"key": SHORTLINK_API, "url": original_url}
         },
         # Format 7: Alternative path
         {
             "url": f"{api_endpoint}/shorten",
-            "params": {"api": Config.SHORTLINK_API, "url": original_url}
+            "params": {"api": SHORTLINK_API, "url": original_url}
         },
         # Format 8: JSON POST
         {
             "url": f"{api_endpoint}/api",
-            "json": {"api_key": Config.SHORTLINK_API, "link": original_url},
+            "json": {"api_key": SHORTLINK_API, "link": original_url},
             "method": "POST"
         }
     ]
@@ -141,14 +146,13 @@ def create_universal_shortlink(original_url):
     
     # If all formats fail, return original URL
     logger.error("❌ All API formats failed! Returning original URL.")
-    logger.error("💡 Please check your SHORTLINK_URL and SHORTLINK_API in config!")
+    logger.error("💡 Please check your SHORTLINK_URL and SHORTLINK_API in info.py!")
     return original_url
 
 
 def generate_monetized_verification_link(bot_username, token):
     """
     Generate verification link with shortlink monetization
-    This is where you earn money!
     """
     # Create Telegram deep link
     telegram_link = f"https://t.me/{bot_username}?start=verify_{token}"
@@ -172,3 +176,4 @@ def test_shortlink_api():
         return "❌ Shortlink API not working! Check config."
     else:
         return f"✅ Shortlink API working! Test link: {result}"
+    
