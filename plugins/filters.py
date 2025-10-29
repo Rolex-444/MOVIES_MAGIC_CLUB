@@ -4,7 +4,7 @@ from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
 from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT
-from utils.verification import generate_verify_token, generate_monetized_verification_link
+from utils.verification import generate_verify_token, create_universal_shortlink
 from config import Config
 from utils.file_properties import get_size
 import logging
@@ -16,6 +16,7 @@ verify_db = VerifyDB()
 
 # Get bot username (set on startup)
 bot_username = None
+
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
@@ -37,6 +38,8 @@ async def start_command(client, message):
         # Handle verification token
         if payload.startswith('verify_'):
             token = payload  # Keep full token with prefix
+            
+            logger.info(f"🔍 Verification attempt by user {user_id} with token {token}")
             
             # Verify the token
             token_valid = await verify_db.verify_token(user_id, token)
@@ -61,7 +64,7 @@ async def start_command(client, message):
                 logger.warning(f"❌ User {user_id} verification failed - invalid token")
             return
         
-        # Handle file requests
+        # Handle file requests (from inline buttons)
         elif len(payload) == 24:  # MongoDB ObjectId
             try:
                 file_data = await db.get_file_by_id(payload)
@@ -77,7 +80,8 @@ async def start_command(client, message):
     # Normal start message
     await message.reply(
         f"👋 Hello {message.from_user.mention}!\n\n"
-        "I'm a movie filter bot. Send me a movie name to search!",
+        "I'm a movie filter bot. Send me a movie name to search!\n\n"
+        "Example: Aranmanai",
         quote=True
     )
 
@@ -85,6 +89,8 @@ async def start_command(client, message):
 async def send_file_with_verification(client, message, file_data):
     """Send file with verification check"""
     user_id = message.from_user.id
+    
+    logger.info(f"📤 Attempting to send file to user {user_id}")
     
     # Check if user is verified
     is_verified = await verify_db.is_verified(user_id)
@@ -94,7 +100,7 @@ async def send_file_with_verification(client, message, file_data):
         # Check free file limit
         files_sent = user_data.get('files_sent', 0) if user_data else 0
         
-        logger.info(f"📊 User {user_id}: files_sent={files_sent}, limit={FREE_FILE_LIMIT}")
+        logger.info(f"📊 User {user_id}: files_sent={files_sent}, limit={FREE_FILE_LIMIT}, verified={is_verified}")
         
         if files_sent >= FREE_FILE_LIMIT:
             # Generate verification link
@@ -106,22 +112,33 @@ async def send_file_with_verification(client, message, file_data):
                 me = await client.get_me()
                 bot_username = me.username
             
+            # Create Telegram link
+            telegram_link = f"https://t.me/{bot_username}?start=verify_{token}"
+            
             # Create monetized shortlink
-            verify_link = generate_monetized_verification_link(bot_username, token)
+            verify_link = create_universal_shortlink(telegram_link)
             
             buttons = [
                 [InlineKeyboardButton("🔐 Verify Now", url=verify_link)],
                 [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)]
             ]
             
+            verify_message = f"""
+🔐 **Verification Required**
+
+Hello {message.from_user.mention}!
+
+You've used your **{files_sent}/{FREE_FILE_LIMIT} free files**.
+To continue accessing more files, please verify your account.
+
+⏰ **Verification valid for:** 6 hours
+💡 **After verification:** Unlimited file access!
+
+Click the button below to verify:
+"""
+            
             await message.reply(
-                Config.VERIFY_TXT.format(
-                    first=message.from_user.first_name,
-                    last=message.from_user.last_name or "",
-                    username=f"@{message.from_user.username}" if message.from_user.username else "User",
-                    mention=message.from_user.mention,
-                    id=user_id
-                ),
+                verify_message,
                 reply_markup=InlineKeyboardMarkup(buttons),
                 quote=True
             )
@@ -130,84 +147,55 @@ async def send_file_with_verification(client, message, file_data):
     
     # Send the file
     try:
-        file_caption = CUSTOM_FILE_CAPTION.format(
-            file_name=file_data.get('file_name', 'Unknown'),
-            file_size=get_size(file_data.get('file_size', 0)),
-            file_caption=file_data.get('caption', '')
-        ) if CUSTOM_FILE_CAPTION else file_data.get('file_name', 'File')
+        # Get file caption
+        if CUSTOM_FILE_CAPTION:
+            file_caption = CUSTOM_FILE_CAPTION.format(
+                file_name=file_data.get('file_name', 'Unknown'),
+                file_size=get_size(file_data.get('file_size', 0)),
+                file_caption=file_data.get('caption', '')
+            )
+        else:
+            file_caption = file_data.get('file_name', 'File')
         
-        await client.send_cached_media(
-            chat_id=message.chat.id,
-            file_id=file_data['file_id'],
-            caption=file_caption,
-            reply_to_message_id=message.id
-        )
+        # Send file based on type
+        file_id = file_data.get('file_id')
+        file_type = file_data.get('file_type', 'document')
+        
+        if file_type == 'video':
+            await client.send_video(
+                chat_id=message.chat.id,
+                video=file_id,
+                caption=file_caption,
+                reply_to_message_id=message.id
+            )
+        elif file_type == 'document':
+            await client.send_document(
+                chat_id=message.chat.id,
+                document=file_id,
+                caption=file_caption,
+                reply_to_message_id=message.id
+            )
+        else:
+            # Try send_cached_media for any type
+            await client.send_cached_media(
+                chat_id=message.chat.id,
+                file_id=file_id,
+                caption=file_caption,
+                reply_to_message_id=message.id
+            )
         
         # Increment file counter for non-verified users
         if not is_verified:
             await verify_db.increment_files_sent(user_id)
+            files_sent = user_data.get('files_sent', 0) if user_data else 0
             logger.info(f"📈 User {user_id} file counter incremented to {files_sent + 1}")
         
-        logger.info(f"✅ File sent to user {user_id}")
+        logger.info(f"✅ File sent successfully to user {user_id}")
         
     except Exception as e:
-        logger.error(f"Error sending file: {e}")
-        await message.reply("❌ Error sending file!")
+        logger.error(f"❌ Error sending file to user {user_id}: {e}")
+        await message.reply("❌ Error sending file! Please try again.")
 
 
-@Client.on_message(filters.text & filters.private & ~filters.command(['start']))
-async def search_files(client, message):
-    """Search and display files"""
-    user_id = message.from_user.id
-    search_query = message.text
-    
-    # Search for files
-    files = await db.search_files(search_query)
-    
-    if not files:
-        await message.reply(
-            f"❌ No results found for '{search_query}'\n\n"
-            "Try different keywords!",
-            quote=True
-        )
-        return
-    
-    # Display results
-    buttons = []
-    for file in files[:50]:  # Limit to 50 results
-        file_id_str = str(file['_id'])
-        file_name = file.get('file_name', 'Unknown')
-        file_size = get_size(file.get('file_size', 0))
-        
-        button_text = f"📁 {file_name} ({file_size})"
-        buttons.append([InlineKeyboardButton(
-            button_text,
-            callback_data=f"file_{file_id_str}"
-        )])
-    
-    await message.reply(
-        f"🔍 Found {len(files)} results for '{search_query}'\n\n"
-        "Click on a file to download:",
-        reply_markup=InlineKeyboardMarkup(buttons),
-        quote=True
-    )
-
-
-@Client.on_callback_query(filters.regex("^file_"))
-async def file_callback(client, query: CallbackQuery):
-    """Handle file button clicks"""
-    file_id_str = query.data.split("_", 1)[1]
-    
-    try:
-        file_data = await db.get_file_by_id(file_id_str)
-        if file_data:
-            # Create a fake message object for send_file_with_verification
-            query.message.from_user = query.from_user
-            await send_file_with_verification(client, query.message, file_data)
-            await query.answer("✅ Processing your request...")
-        else:
-            await query.answer("❌ File not found!", show_alert=True)
-    except Exception as e:
-        logger.error(f"Error in file callback: {e}")
-        await query.answer("❌ Error fetching file!", show_alert=True)
-    
+# This handler must match your existing bot structure
+# If your bot uses a different search method, keep your original one
