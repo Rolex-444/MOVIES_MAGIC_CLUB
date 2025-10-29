@@ -3,12 +3,13 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT
+from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT, AUTO_DELETE, AUTO_DELETE_TIME, REFER_POINT
 from utils.verification import generate_verify_token, create_universal_shortlink
 from config import Config
 from utils.file_properties import get_size
 import logging
 import re
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +25,17 @@ YOUR_CHANNEL_LINK = "https://t.me/movies_magic_club3"
 
 
 def clean_caption(caption):
-    """
-    Remove other channel links and mentions from caption
-    Keep only the movie info
-    """
+    """Remove other channel links and mentions from caption"""
     if not caption:
         return caption
     
-    # Remove @ mentions (like @OldChannel, @ViP_LinkzZ, etc.)
+    # Remove @ mentions
     caption = re.sub(r'@\w+', '', caption)
     
-    # Remove telegram links (t.me/channel, telegram.me/channel)
+    # Remove telegram links
     caption = re.sub(r'(https?://)?(t\.me|telegram\.me)/\S+', '', caption)
     
-    # Remove common spam words/phrases (case insensitive)
+    # Remove spam words
     spam_words = [
         'join', 'subscribe', 'channel', 'group', 'follow',
         'movie', 'download', 'here', 'now', 'free', 'latest',
@@ -45,16 +43,43 @@ def clean_caption(caption):
     ]
     
     for word in spam_words:
-        # Remove whole words only (not part of movie names)
         caption = re.sub(rf'\b{word}\b', '', caption, flags=re.IGNORECASE)
     
     # Remove multiple spaces
     caption = re.sub(r'\s+', ' ', caption)
-    
-    # Remove extra dots, dashes at start/end
     caption = caption.strip(' .-_|•~')
     
     return caption
+
+
+async def process_referral(new_user_id, referrer_id):
+    """Process referral when new user joins via referral link"""
+    try:
+        if new_user_id == referrer_id:
+            return False
+        
+        # Check if user already referred
+        user_data = await db.get_user(new_user_id)
+        if user_data and user_data.get('referred_by'):
+            return False
+        
+        # Add points to referrer
+        await db.add_points(referrer_id, REFER_POINT)
+        
+        # Mark new user as referred
+        await db.update_user(new_user_id, {'referred_by': referrer_id})
+        
+        # Increment referrer's total referrals
+        referrer_data = await db.get_user(referrer_id)
+        current_refs = referrer_data.get('total_referrals', 0) if referrer_data else 0
+        await db.update_user(referrer_id, {'total_referrals': current_refs + 1})
+        
+        logger.info(f"✅ Referral: {referrer_id} → {new_user_id} (+{REFER_POINT} points)")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error processing referral: {e}")
+        return False
 
 
 @Client.on_message(filters.command("start") & filters.private)
@@ -70,14 +95,53 @@ async def start_command(client, message):
     logger.info(f"⭐ /start from user {user_id}")
     
     # Add user to database
-    await db.add_user(user_id)
+    await db.add_user(user_id, message.from_user.first_name)
     
     # Check if it's a deep link
     if len(message.command) > 1:
         data = message.command[1]
         
+        # Handle referral link
+        if data.startswith("ref"):
+            referrer_id = int(data.replace("ref", ""))
+            success = await process_referral(user_id, referrer_id)
+            
+            if success:
+                # Notify new user
+                await message.reply(
+                    f"🎉 **Welcome Bonus!**\n\n"
+                    f"You've been referred by a friend!\n"
+                    f"You both earned bonus points! 🎁\n\n"
+                    f"Use /premium to check your benefits!\n\n"
+                    f"Join: {YOUR_CHANNEL}",
+                    quote=True
+                )
+                
+                # Notify referrer
+                try:
+                    referrer_data = await db.get_user(referrer_id)
+                    points = referrer_data.get('points', 0) if referrer_data else 0
+                    await client.send_message(
+                        referrer_id,
+                        f"🎁 **New Referral!**\n\n"
+                        f"User {message.from_user.first_name} joined using your link!\n"
+                        f"You earned **+{REFER_POINT} points**\n\n"
+                        f"Total Points: **{points}**\n"
+                        f"Use /premium to redeem!"
+                    )
+                except:
+                    pass
+            else:
+                await message.reply(
+                    f"👋 Welcome!\n\n"
+                    f"🎬 Search for movies in the group\n"
+                    f"📁 Or send me a movie name here\n\n"
+                    f"Join: {YOUR_CHANNEL}"
+                )
+            return
+        
         # Handle verification token
-        if data.startswith("verify_"):
+        elif data.startswith("verify_"):
             token = data
             
             logger.info(f"🔍 Verification attempt by user {user_id}")
@@ -110,22 +174,35 @@ async def start_command(client, message):
             return
     
     # Regular /start command
+    buttons = [
+        [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
+         InlineKeyboardButton("🎁 Referral", callback_data="referral_info")],
+        [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
+    ]
+    
     await message.reply(
-        f"👋 Welcome!\n\n"
+        f"👋 Welcome {message.from_user.first_name}!\n\n"
         f"🎬 Search for movies in the group\n"
         f"📁 Or send me a movie name here\n\n"
-        f"Join: {YOUR_CHANNEL}"
+        f"💎 Want unlimited access? Check /premium!\n\n"
+        f"Join: {YOUR_CHANNEL}",
+        reply_markup=InlineKeyboardMarkup(buttons)
     )
 
 
 async def send_file_by_deeplink(client, message, file_id):
-    """Send file when accessed via deep link - WITH VERIFICATION"""
+    """Send file when accessed via deep link - WITH VERIFICATION AND AUTO-DELETE"""
     user_id = message.from_user.id
     
     logger.info(f"📥 File request from user {user_id} for file {file_id}")
     
-    # Check if user is admin (admins bypass everything)
-    if user_id not in ADMINS:
+    # ✅ CHECK 1: Premium users bypass everything
+    is_premium = await db.is_premium_user(user_id)
+    
+    if is_premium:
+        logger.info(f"👑 Premium user {user_id} - bypassing verification")
+    elif user_id not in ADMINS:
+        # Check verification for non-premium users
         is_verified = await verify_db.is_verified(user_id)
         
         if not is_verified:
@@ -144,7 +221,8 @@ async def send_file_by_deeplink(client, message, file_id):
                 
                 buttons = [
                     [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
-                    [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)]
+                    [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
+                    [InlineKeyboardButton("👑 Get Premium - No Verification!", callback_data="premium")]
                 ]
                 
                 verify_msg = f"""
@@ -153,12 +231,14 @@ async def send_file_by_deeplink(client, message, file_id):
 Hello {message.from_user.mention}!
 
 You've used your **{files_sent}/{FREE_FILE_LIMIT} free files**.
-To continue accessing more files, please verify your account.
+
+**Option 1:** Verify now (Free, valid 6 hours)
+**Option 2:** Get Premium (No verification needed!)
 
 ⏰ **Verification valid for:** 6 hours
-💡 **After verification:** Unlimited file access!
+💎 **Premium:** Unlimited access forever!
 
-Click the button below to verify:
+Click a button below:
 """
                 
                 await message.reply(
@@ -187,58 +267,51 @@ Click the button below to verify:
         await message.reply("❌ File not found!")
         return
     
-    # ✅ NEW: Clean caption - remove other channel links
+    # Clean caption
     original_caption = file_data.get('caption', '')
     file_name = file_data.get('file_name', 'Unknown File')
     file_size = get_size(file_data.get('file_size', 0))
     
-    # Use original caption if available, otherwise use filename
     display_name = original_caption if original_caption else file_name
-    
-    # Clean the caption to remove other channel links
     cleaned_caption = clean_caption(display_name)
     
     logger.info(f"📝 Original: {display_name[:80]}")
     logger.info(f"🧹 Cleaned: {cleaned_caption[:80]}")
     
-    # Build final caption with YOUR channel only
-    if CUSTOM_FILE_CAPTION:
-        try:
-            caption = CUSTOM_FILE_CAPTION.format(
-                file_name=cleaned_caption,
-                file_size=file_size,
-                caption=cleaned_caption
-            )
-        except:
-            caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
+    # Build caption
+    if is_premium:
+        caption = f"{cleaned_caption}\n\n👑 **Premium User**\n🎬 Join: {YOUR_CHANNEL}"
     else:
-        # Simple clean caption with only your channel
         caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
     
-    # Build buttons with YOUR channel only
+    # Build buttons
     file_buttons = [
         [InlineKeyboardButton("🎬 Join Our Channel", url=YOUR_CHANNEL_LINK)]
     ]
+    
+    if not is_premium:
+        file_buttons.append([InlineKeyboardButton("👑 Get Premium", callback_data="premium")])
     
     # Send file
     try:
         telegram_file_id = file_data.get('file_id')
         file_type = file_data.get('file_type', 'document')
         
+        # Send based on file type
         if file_type == 'video':
-            await message.reply_video(
+            sent_message = await message.reply_video(
                 telegram_file_id, 
                 caption=caption, 
                 reply_markup=InlineKeyboardMarkup(file_buttons)
             )
         elif file_type == 'audio':
-            await message.reply_audio(
+            sent_message = await message.reply_audio(
                 telegram_file_id, 
                 caption=caption, 
                 reply_markup=InlineKeyboardMarkup(file_buttons)
             )
         else:
-            await message.reply_document(
+            sent_message = await message.reply_document(
                 telegram_file_id, 
                 caption=caption, 
                 reply_markup=InlineKeyboardMarkup(file_buttons)
@@ -246,9 +319,32 @@ Click the button below to verify:
         
         logger.info(f"✅ File sent successfully to user {user_id}")
         
+        # ✅ AUTO-DELETE after 10 minutes (only for non-premium users)
+        if AUTO_DELETE and not is_premium:
+            asyncio.create_task(delete_message_after_delay(sent_message, AUTO_DELETE_TIME))
+            
+            # Send delete notification
+            minutes = AUTO_DELETE_TIME // 60
+            await message.reply(
+                f"⏰ This file will be deleted in **{minutes} minutes**!\n"
+                f"Save it quickly!\n\n"
+                f"💡 Get Premium for permanent access - no auto-delete!",
+                quote=True
+            )
+        
     except Exception as e:
         logger.error(f"❌ Error sending file: {e}")
         await message.reply("❌ Error sending file!")
+
+
+async def delete_message_after_delay(message, delay_seconds):
+    """Delete message after specified delay"""
+    try:
+        await asyncio.sleep(delay_seconds)
+        await message.delete()
+        logger.info(f"🗑️ Auto-deleted message {message.id}")
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
 
 
 @Client.on_message(filters.text & filters.group, group=1)
@@ -256,7 +352,6 @@ async def group_search_handler(client, message):
     """Handle movie search in GROUPS"""
     search = message.text.strip()
     
-    # Ignore short searches or commands
     if len(search) < 3 or search.startswith("/"):
         return
     
@@ -284,8 +379,6 @@ async def group_search_handler(client, message):
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
-                
-                # ✅ Clean caption for search results too
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
@@ -301,6 +394,7 @@ async def group_search_handler(client, message):
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+            [InlineKeyboardButton("👑 Get Premium", callback_data="premium")],
             [InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
         
@@ -317,7 +411,7 @@ async def group_search_handler(client, message):
         logger.error(f"❌ Error in group_search: {e}", exc_info=True)
 
 
-@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help"]))
+@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "premium", "referral"]))
 async def private_search(client, message):
     """Handle movie search in PRIVATE chat"""
     search = message.text.strip()
@@ -344,8 +438,6 @@ async def private_search(client, message):
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
-                
-                # ✅ Clean caption for search results
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
@@ -360,6 +452,7 @@ async def private_search(client, message):
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+            [InlineKeyboardButton("👑 Get Premium", callback_data="premium")],
             [InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
         
@@ -381,5 +474,5 @@ async def close_callback(client, query):
     await query.answer()
 
 
-logger.info("✅ FILTERS PLUGIN LOADED")
-            
+logger.info("✅ FILTERS PLUGIN LOADED WITH AUTO-DELETE & PREMIUM")
+    
