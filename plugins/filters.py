@@ -95,7 +95,7 @@ async def start_command(client, message):
     logger.info(f"⭐ /start from user {user_id}")
     
     # Add user to database
-    await db.add_user(user_id, message.from_user.first_name)
+    await db.add_user(user_id)
     
     # Check if it's a deep link
     if len(message.command) > 1:
