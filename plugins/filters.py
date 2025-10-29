@@ -1,319 +1,213 @@
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram import Client, filters, enums
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from database.database import Database
 from database.verify import VerifyDB
-from database.users import UserDB
-from utils.filters_func import search_files
-from utils.shortlink_api import get_shortlink
-from utils.file_properties import get_size
-from info import *
+from bson import ObjectId
+from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT
+from utils.verification import generate_verify_token, generate_monetized_verification_link
 from config import Config
-import random
-import asyncio
+from utils.file_properties import get_size
+import logging
+
+logger = logging.getLogger(__name__)
 
 db = Database()
 verify_db = VerifyDB()
-user_db = UserDB()
 
-@Client.on_message(filters.text & filters.group)
-async def auto_filter(client, message):
-    """Main auto filter function"""
-    
-    # Ignore commands
-    if message.text.startswith('/'):
-        return
-    
-    # Get search query
-    search = message.text
-    
-    # Search files in database
-    files, offset, total = await search_files(search)
-    
-    if not files:
-        # No files found
-        if SPELL_CHECK:
-            await spell_check(client, message, search)
-        return
-    
-    # Build buttons
-    btn = []
-    for file in files:
-        # Create unique file ID
-        file_id = str(file.get('_id'))
-        file_name = file.get('file_name', 'Unknown')
-        
-        # Create button with verification link
-        if IS_VERIFY:
-            verify_url = f"https://t.me/{client.username}?start=file_{file_id}"
-            short_url = await get_shortlink(verify_url)
-            btn.append([InlineKeyboardButton(f"📁 {file_name}", url=short_url)])
-        else:
-            btn.append([InlineKeyboardButton(f"📁 {file_name}", callback_data=f"file#{file_id}")])
-    
-    # Add pages navigation if more files
-    if offset != "":
-        btn.append(
-            [InlineKeyboardButton("📄 Pages", callback_data="pages"),
-             InlineKeyboardButton(f"1/{round(int(total)/10)}", callback_data="pages"),
-             InlineKeyboardButton("Next ⏩", callback_data=f"next_{offset}")]
-        )
-    
-    # Add 18+ Rare Videos button
-    btn.append([InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")])
-    
-    # Add close button
-    btn.append([InlineKeyboardButton("❌ Close", callback_data="close")])
-    
-    # Get IMDB info if enabled
-    if IMDB:
-        imdb_info = await get_imdb_info(search)
-        caption = format_caption(imdb_info, total)
-    else:
-        caption = f"<b>Found {total} results for:</b> <code>{search}</code>\n\n"
-    
-    # Send results
-    try:
-        await message.reply_photo(
-            photo=random.choice(PICS),
-            caption=caption,
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
-    except Exception as e:
-        await message.reply(
-            caption,
-            reply_markup=InlineKeyboardMarkup(btn)
-        )
+# Get bot username (set on startup)
+bot_username = None
 
-
-@Client.on_callback_query(filters.regex(r"^file#"))
-async def send_file(client, query):
-    """Send file after verification check"""
+@Client.on_message(filters.command("start") & filters.private)
+async def start_command(client, message):
+    """Handle /start command and deep links"""
+    global bot_username
+    if not bot_username:
+        me = await client.get_me()
+        bot_username = me.username
     
-    user_id = query.from_user.id
-    file_id = query.data.split("#")[1]
-    
-    # Check verification status
-    if IS_VERIFY and user_id not in ADMINS:
-        is_verified = await verify_db.is_verified(user_id)
-        
-        if not is_verified:
-            verify_url = f"https://t.me/{client.username}?start=verify_{user_id}"
-            short_url = await get_shortlink(verify_url)
-            
-            buttons = [
-                [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
-                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
-                [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")]
-            ]
-            
-            await query.answer(
-                "⚠️ You need to verify first!",
-                show_alert=True
-            )
-            
-            await query.message.reply(
-                Config.VERIFY_TXT,
-                reply_markup=InlineKeyboardMarkup(buttons)
-            )
-            return
-    
-    # Get file from database
-    file_data = await db.get_file(file_id)
-    
-    if not file_data:
-        await query.answer("File not found!", show_alert=True)
-        return
-    
-    # Send file
-    caption = CUSTOM_FILE_CAPTION if CUSTOM_FILE_CAPTION else Config.FILE_CAPTION
-    caption = caption.format(
-        file_name=file_data.get('file_name', 'Unknown'),
-        file_size=get_size(file_data.get('file_size', 0)),
-        caption=file_data.get('caption', '')
-    )
-    
-    # Buttons for file message with Stream, Fast Download, and 18+ button
-    file_buttons = [
-        [InlineKeyboardButton("🎬 Stream", callback_data=f"stream#{file_id}"),
-         InlineKeyboardButton("⚡ Fast Download", callback_data=f"fast#{file_id}")],
-        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
-    ]
-    
-    try:
-        msg = await client.send_cached_media(
-            chat_id=query.from_user.id,
-            file_id=file_data.get('file_id'),
-            caption=caption,
-            protect_content=PROTECT_CONTENT,
-            reply_markup=InlineKeyboardMarkup(file_buttons)
-        )
-        
-        await query.answer("File sent to PM!", show_alert=False)
-        
-        # Auto delete if enabled
-        if AUTO_DELETE:
-            await asyncio.sleep(AUTO_DELETE_TIME)
-            try:
-                await msg.delete()
-            except:
-                pass
-            
-    except Exception as e:
-        await query.answer(f"Error: {e}", show_alert=True)
-
-
-async def send_file_by_id(client, message, file_id):
-    """Send file by ID from start command"""
     user_id = message.from_user.id
     
-    # Get file from database
-    file_data = await db.get_file(file_id)
+    # Add user to database
+    await db.add_user(user_id, message.from_user.first_name)
     
-    if not file_data:
-        await message.reply("File not found!")
-        return
-    
-    # Send file
-    caption = CUSTOM_FILE_CAPTION if CUSTOM_FILE_CAPTION else Config.FILE_CAPTION
-    caption = caption.format(
-        file_name=file_data.get('file_name', 'Unknown'),
-        file_size=get_size(file_data.get('file_size', 0)),
-        caption=file_data.get('caption', '')
-    )
-    
-    # Buttons for file message
-    file_buttons = [
-        [InlineKeyboardButton("🎬 Stream", callback_data=f"stream#{file_id}"),
-         InlineKeyboardButton("⚡ Fast Download", callback_data=f"fast#{file_id}")],
-        [InlineKeyboardButton("🔞 18+ Rare Videos", url="https://t.me/REAL_TERABOX_PRO_bot")],
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
-    ]
-    
-    try:
-        msg = await client.send_cached_media(
-            chat_id=user_id,
-            file_id=file_data.get('file_id'),
-            caption=caption,
-            protect_content=PROTECT_CONTENT,
-            reply_markup=InlineKeyboardMarkup(file_buttons)
-        )
+    # Check if it's a deep link
+    if len(message.command) > 1:
+        payload = message.command[1]
         
-        # Auto delete if enabled
-        if AUTO_DELETE:
-            await asyncio.sleep(AUTO_DELETE_TIME)
-            try:
-                await msg.delete()
-            except:
-                pass
+        # Handle verification token
+        if payload.startswith('verify_'):
+            token = payload  # Keep full token with prefix
             
-    except Exception as e:
-        await message.reply(f"Error: {e}")
-
-
-@Client.on_callback_query(filters.regex(r"^stream#"))
-async def stream_callback(client, query):
-    """Handle stream button callback"""
-    file_id = query.data.split("#")[1]
-    
-    if STREAM_MODE:
-        # Generate stream link
-        import base64
-        encoded = base64.b64encode(file_id.encode()).decode()
-        stream_url = f"http://yourserver.com:{PORT}/watch/{encoded}"
+            # Verify the token
+            token_valid = await verify_db.verify_token(user_id, token)
+            
+            if token_valid:
+                # ✅ CRITICAL: Mark user as verified
+                await verify_db.update_verification(user_id)
+                
+                await message.reply(
+                    "✅ **Verification Successful!**\n\n"
+                    "You can now access files without verification for 6 hours.\n"
+                    "Send me a movie name to search!",
+                    quote=True
+                )
+                logger.info(f"✅ User {user_id} successfully verified!")
+            else:
+                await message.reply(
+                    "❌ **Verification Failed!**\n\n"
+                    "Token is invalid or expired. Please try again.",
+                    quote=True
+                )
+                logger.warning(f"❌ User {user_id} verification failed - invalid token")
+            return
         
-        await query.answer(
-            f"Stream Link: {stream_url}",
-            show_alert=True
-        )
-    else:
-        await query.answer(
-            "⚠️ Stream feature is currently disabled!\n\nContact @Siva9789 to enable.",
-            show_alert=True
-        )
+        # Handle file requests
+        elif len(payload) == 24:  # MongoDB ObjectId
+            try:
+                file_data = await db.get_file_by_id(payload)
+                if file_data:
+                    await send_file_with_verification(client, message, file_data)
+                else:
+                    await message.reply("❌ File not found!")
+            except Exception as e:
+                logger.error(f"Error fetching file: {e}")
+                await message.reply("❌ Error fetching file!")
+            return
+    
+    # Normal start message
+    await message.reply(
+        f"👋 Hello {message.from_user.mention}!\n\n"
+        "I'm a movie filter bot. Send me a movie name to search!",
+        quote=True
+    )
 
 
-@Client.on_callback_query(filters.regex(r"^fast#"))
-async def fast_download_callback(client, query):
-    """Handle fast download button"""
-    file_id = query.data.split("#")[1]
+async def send_file_with_verification(client, message, file_data):
+    """Send file with verification check"""
+    user_id = message.from_user.id
     
-    # Get file from database
-    file_data = await db.get_file(file_id)
+    # Check if user is verified
+    is_verified = await verify_db.is_verified(user_id)
+    user_data = await verify_db.get_user(user_id)
     
-    if not file_data:
-        await query.answer("File not found!", show_alert=True)
-        return
+    if not is_verified:
+        # Check free file limit
+        files_sent = user_data.get('files_sent', 0) if user_data else 0
+        
+        logger.info(f"📊 User {user_id}: files_sent={files_sent}, limit={FREE_FILE_LIMIT}")
+        
+        if files_sent >= FREE_FILE_LIMIT:
+            # Generate verification link
+            token = generate_verify_token()
+            await verify_db.set_verify_token(user_id, f"verify_{token}", 600)  # 10 min expiry
+            
+            # Get bot username
+            if not bot_username:
+                me = await client.get_me()
+                bot_username = me.username
+            
+            # Create monetized shortlink
+            verify_link = generate_monetized_verification_link(bot_username, token)
+            
+            buttons = [
+                [InlineKeyboardButton("🔐 Verify Now", url=verify_link)],
+                [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)]
+            ]
+            
+            await message.reply(
+                Config.VERIFY_TXT.format(
+                    first=message.from_user.first_name,
+                    last=message.from_user.last_name or "",
+                    username=f"@{message.from_user.username}" if message.from_user.username else "User",
+                    mention=message.from_user.mention,
+                    id=user_id
+                ),
+                reply_markup=InlineKeyboardMarkup(buttons),
+                quote=True
+            )
+            logger.info(f"🔒 User {user_id} needs verification - {files_sent}/{FREE_FILE_LIMIT} files used")
+            return
     
-    # Check if user is premium
-    user_id = query.from_user.id
-    is_premium = await user_db.is_premium(user_id)
-    
-    if not is_premium:
-        await query.answer(
-            "⚠️ Fast Download is only for Premium users!\n\n"
-            "Use /premium to get premium access.",
-            show_alert=True
-        )
-        return
-    
-    # Send file without verification for premium users
-    caption = f"⚡ <b>Fast Download</b>\n\n{file_data.get('file_name', 'Unknown')}\n\nEnjoy Premium! 👑"
-    
+    # Send the file
     try:
+        file_caption = CUSTOM_FILE_CAPTION.format(
+            file_name=file_data.get('file_name', 'Unknown'),
+            file_size=get_size(file_data.get('file_size', 0)),
+            file_caption=file_data.get('caption', '')
+        ) if CUSTOM_FILE_CAPTION else file_data.get('file_name', 'File')
+        
         await client.send_cached_media(
-            chat_id=query.from_user.id,
-            file_id=file_data.get('file_id'),
-            caption=caption,
-            protect_content=PROTECT_CONTENT
+            chat_id=message.chat.id,
+            file_id=file_data['file_id'],
+            caption=file_caption,
+            reply_to_message_id=message.id
         )
-        await query.answer("✅ File sent instantly!", show_alert=False)
-    except Exception as e:
-        await query.answer(f"Error: {e}", show_alert=True)
-
-
-async def spell_check(client, message, search):
-    """Spell check for wrong movie names"""
-    # Implement spell check logic here if needed
-    pass
-
-
-async def get_imdb_info(title):
-    """Get IMDB information"""
-    try:
-        from imdb import IMDb
-        ia = IMDb()
-        movies = ia.search_movie(title)
         
-        if movies:
-            movie = movies[0]
-            ia.update(movie)
-            return {
-                'title': movie.get('title'),
-                'year': movie.get('year'),
-                'rating': movie.get('rating'),
-                'genres': ', '.join(movie.get('genres', [])),
-                'plot': movie.get('plot outline'),
-                'poster': movie.get('full-size cover url')
-            }
-    except:
-        pass
-    return None
+        # Increment file counter for non-verified users
+        if not is_verified:
+            await verify_db.increment_files_sent(user_id)
+            logger.info(f"📈 User {user_id} file counter incremented to {files_sent + 1}")
+        
+        logger.info(f"✅ File sent to user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error sending file: {e}")
+        await message.reply("❌ Error sending file!")
 
 
-def format_caption(imdb_info, total):
-    """Format caption with IMDB info"""
-    if not imdb_info:
-        return f"<b>Found {total} results</b>\n\n"
+@Client.on_message(filters.text & filters.private & ~filters.command(['start']))
+async def search_files(client, message):
+    """Search and display files"""
+    user_id = message.from_user.id
+    search_query = message.text
     
-    caption = f"""
-🎬 <b>{imdb_info['title']}</b> ({imdb_info.get('year', 'N/A')})
+    # Search for files
+    files = await db.search_files(search_query)
+    
+    if not files:
+        await message.reply(
+            f"❌ No results found for '{search_query}'\n\n"
+            "Try different keywords!",
+            quote=True
+        )
+        return
+    
+    # Display results
+    buttons = []
+    for file in files[:50]:  # Limit to 50 results
+        file_id_str = str(file['_id'])
+        file_name = file.get('file_name', 'Unknown')
+        file_size = get_size(file.get('file_size', 0))
+        
+        button_text = f"📁 {file_name} ({file_size})"
+        buttons.append([InlineKeyboardButton(
+            button_text,
+            callback_data=f"file_{file_id_str}"
+        )])
+    
+    await message.reply(
+        f"🔍 Found {len(files)} results for '{search_query}'\n\n"
+        "Click on a file to download:",
+        reply_markup=InlineKeyboardMarkup(buttons),
+        quote=True
+    )
 
-⭐ <b>Rating:</b> {imdb_info.get('rating', 'N/A')}/10
-🎭 <b>Genres:</b> {imdb_info.get('genres', 'N/A')}
 
-📝 <b>Plot:</b> {imdb_info.get('plot', 'N/A')[:200]}...
-
-<b>Found {total} results:</b>
-"""
-    return caption
+@Client.on_callback_query(filters.regex("^file_"))
+async def file_callback(client, query: CallbackQuery):
+    """Handle file button clicks"""
+    file_id_str = query.data.split("_", 1)[1]
+    
+    try:
+        file_data = await db.get_file_by_id(file_id_str)
+        if file_data:
+            # Create a fake message object for send_file_with_verification
+            query.message.from_user = query.from_user
+            await send_file_with_verification(client, query.message, file_data)
+            await query.answer("✅ Processing your request...")
+        else:
+            await query.answer("❌ File not found!", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error in file callback: {e}")
+        await query.answer("❌ Error fetching file!", show_alert=True)
+                                                      
