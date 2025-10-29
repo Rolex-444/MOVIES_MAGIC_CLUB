@@ -28,6 +28,8 @@ async def start_command(client, message):
     
     user_id = message.from_user.id
     
+    logger.info(f"⭐ /start from user {user_id}")
+    
     # Add user to database
     await db.add_user(user_id)
     
@@ -81,7 +83,7 @@ async def send_file_by_deeplink(client, message, file_id):
     """Send file when accessed via deep link - WITH VERIFICATION"""
     user_id = message.from_user.id
     
-    logger.info(f"📥 File request from user {user_id}")
+    logger.info(f"📥 File request from user {user_id} for file {file_id}")
     
     # Check if user is admin (admins bypass everything)
     if user_id not in ADMINS:
@@ -146,34 +148,20 @@ Click the button below to verify:
         await message.reply("❌ File not found!")
         return
     
-    # ✅ FIX 1: Better caption with all info
+    # Build caption with better formatting
     file_name = file_data.get('file_name', 'Unknown File')
     file_size = get_size(file_data.get('file_size', 0))
     
-    # Build caption
-    if CUSTOM_FILE_CAPTION:
-        try:
-            caption = CUSTOM_FILE_CAPTION.format(
-                file_name=file_name,
-                file_size=file_size,
-                caption=file_data.get('caption', '')
-            )
-        except:
-            caption = f"📁 **{file_name}**\n📦 Size: {file_size}\n\n🎬 Join: @movies_magic_club3"
-    else:
-        # Default caption with better formatting
-        caption = f"""
+    caption = f"""
 📁 **File Name:** `{file_name}`
 📦 **Size:** {file_size}
 
-🎬 **Join Our Channel:** @movies_magic_club3
-⚡ **For More Movies**
+🎬 **Join:** @movies_magic_club3
 """
     
     # Build buttons
     file_buttons = [
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")],
-        [InlineKeyboardButton("📢 Updates", url="https://t.me/movies_magic_club3")]
+        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
     ]
     
     # Send file
@@ -205,62 +193,73 @@ Click the button below to verify:
                 parse_mode=enums.ParseMode.MARKDOWN
             )
         
-        logger.info(f"✅ File sent successfully")
+        logger.info(f"✅ File sent successfully to user {user_id}")
         
     except Exception as e:
         logger.error(f"❌ Error sending file: {e}")
         await message.reply("❌ Error sending file!")
 
 
-@Client.on_message(filters.text & filters.group & ~filters.command(["start"]))
-async def group_search(client, message):
+# ✅ CRITICAL FIX: Group search with higher priority
+@Client.on_message(filters.text & filters.group, group=1)
+async def group_search_handler(client, message):
     """Handle movie search in GROUPS"""
     search = message.text.strip()
     
-    if len(search) < 3:
+    # Ignore short searches or commands
+    if len(search) < 3 or search.startswith("/"):
         return
     
-    logger.info(f"🔍 Group search: {search}")
+    logger.info(f"🔍 GROUP SEARCH from {message.chat.id}: '{search}'")
     
-    files, total = await db.search_files(search)
-    
-    if not files:
-        return
-    
-    global bot_username
-    if not bot_username:
-        me = await client.get_me()
-        bot_username = me.username
-    
-    file_text = f"📁 Found {total} files for `{search}`\n\n"
-    
-    for file in files[:10]:
-        try:
-            file_id = str(file.get('_id', ''))
-            file_name = file.get('file_name', 'Unknown')
-            file_size = get_size(file.get('file_size', 0))
-            
-            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
-            file_text += f"{clickable_text}\n\n"
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            continue
-    
-    file_text += f"🎬 Join: @movies_magic_club3"
-    
-    buttons = [
-        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
-         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ]
-    
-    await message.reply(
-        file_text,
-        reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode=enums.ParseMode.HTML,
-        disable_web_page_preview=True
-    )
+    try:
+        files, total = await db.search_files(search)
+        
+        if not files or total == 0:
+            logger.info(f"❌ No files found for: {search}")
+            return
+        
+        logger.info(f"✅ Found {total} files")
+        
+        global bot_username
+        if not bot_username:
+            me = await client.get_me()
+            bot_username = me.username
+        
+        file_text = f"📁 Found {total} files for `{search}`\n\n"
+        
+        for file in files[:10]:
+            try:
+                file_id = str(file.get('_id', ''))
+                file_name = file.get('file_name', 'Unknown')
+                file_size = get_size(file.get('file_size', 0))
+                
+                deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                file_text += f"{clickable_text}\n\n"
+            except Exception as e:
+                logger.error(f"Error formatting file: {e}")
+                continue
+        
+        file_text += f"🎬 Join: @movies_magic_club3"
+        
+        buttons = [
+            [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+             InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ]
+        
+        await message.reply(
+            file_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+        
+        logger.info(f"✅ Search results sent to group {message.chat.id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error in group_search: {e}", exc_info=True)
 
 
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help"]))
@@ -268,47 +267,51 @@ async def private_search(client, message):
     """Handle movie search in PRIVATE chat"""
     search = message.text.strip()
     
-    logger.info(f"🔍 Private search: {search}")
+    logger.info(f"🔍 PRIVATE SEARCH: '{search}'")
     
-    files, total = await db.search_files(search)
-    
-    if not files:
-        await message.reply(f"❌ No files found for: {search}")
-        return
-    
-    global bot_username
-    if not bot_username:
-        me = await client.get_me()
-        bot_username = me.username
-    
-    file_text = f"📁 Found {total} files for `{search}`\n\n"
-    
-    for file in files[:10]:
-        try:
-            file_id = str(file.get('_id', ''))
-            file_name = file.get('file_name', 'Unknown')
-            file_size = get_size(file.get('file_size', 0))
-            
-            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
-            file_text += f"{clickable_text}\n\n"
-        except Exception as e:
-            logger.error(f"Error: {e}")
-    
-    file_text += f"🎬 Join: @movies_magic_club3"
-    
-    buttons = [
-        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
-         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ]
-    
-    await message.reply(
-        file_text, 
-        reply_markup=InlineKeyboardMarkup(buttons), 
-        parse_mode=enums.ParseMode.HTML, 
-        disable_web_page_preview=True
-    )
+    try:
+        files, total = await db.search_files(search)
+        
+        if not files:
+            await message.reply(f"❌ No files found for: {search}")
+            return
+        
+        global bot_username
+        if not bot_username:
+            me = await client.get_me()
+            bot_username = me.username
+        
+        file_text = f"📁 Found {total} files for `{search}`\n\n"
+        
+        for file in files[:10]:
+            try:
+                file_id = str(file.get('_id', ''))
+                file_name = file.get('file_name', 'Unknown')
+                file_size = get_size(file.get('file_size', 0))
+                
+                deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                file_text += f"{clickable_text}\n\n"
+            except Exception as e:
+                logger.error(f"Error: {e}")
+        
+        file_text += f"🎬 Join: @movies_magic_club3"
+        
+        buttons = [
+            [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+             InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+            [InlineKeyboardButton("❌ Close", callback_data="close")]
+        ]
+        
+        await message.reply(
+            file_text, 
+            reply_markup=InlineKeyboardMarkup(buttons), 
+            parse_mode=enums.ParseMode.HTML, 
+            disable_web_page_preview=True
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error in private_search: {e}", exc_info=True)
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -316,4 +319,8 @@ async def close_callback(client, query):
     """Handle close button"""
     await query.message.delete()
     await query.answer()
+
+
+# Log that this plugin loaded
+logger.info("✅ FILTERS PLUGIN LOADED")
     
