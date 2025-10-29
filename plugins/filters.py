@@ -148,16 +148,32 @@ Click the button below to verify:
         await message.reply("❌ File not found!")
         return
     
-    # Build caption with better formatting
+    # ✅ FIX: Use ORIGINAL caption instead of modified file_name
+    # Priority: caption > file_name
+    original_caption = file_data.get('caption', '')
     file_name = file_data.get('file_name', 'Unknown File')
     file_size = get_size(file_data.get('file_size', 0))
     
-    caption = f"""
-📁 **File Name:** `{file_name}`
-📦 **Size:** {file_size}
-
-🎬 **Join:** @movies_magic_club3
-"""
+    # Use original caption if available, otherwise use filename
+    display_name = original_caption if original_caption else file_name
+    
+    logger.info(f"📝 Original caption: {original_caption[:100]}")
+    logger.info(f"📝 File name: {file_name[:100]}")
+    logger.info(f"📤 Sending with caption: {display_name[:100]}")
+    
+    # Build caption
+    if CUSTOM_FILE_CAPTION:
+        try:
+            caption = CUSTOM_FILE_CAPTION.format(
+                file_name=display_name,
+                file_size=file_size,
+                caption=original_caption
+            )
+        except:
+            caption = f"📁 **{display_name}**\n📦 Size: {file_size}\n\n🎬 Join: @movies_magic_club3"
+    else:
+        # Simple caption with original name
+        caption = f"{display_name}\n\n🎬 Join: @movies_magic_club3"
     
     # Build buttons
     file_buttons = [
@@ -169,28 +185,23 @@ Click the button below to verify:
         telegram_file_id = file_data.get('file_id')
         file_type = file_data.get('file_type', 'document')
         
-        logger.info(f"📤 Sending: {file_name}")
-        
         if file_type == 'video':
             await message.reply_video(
                 telegram_file_id, 
                 caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons), 
-                parse_mode=enums.ParseMode.MARKDOWN
+                reply_markup=InlineKeyboardMarkup(file_buttons)
             )
         elif file_type == 'audio':
             await message.reply_audio(
                 telegram_file_id, 
                 caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons), 
-                parse_mode=enums.ParseMode.MARKDOWN
+                reply_markup=InlineKeyboardMarkup(file_buttons)
             )
         else:
             await message.reply_document(
                 telegram_file_id, 
                 caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons), 
-                parse_mode=enums.ParseMode.MARKDOWN
+                reply_markup=InlineKeyboardMarkup(file_buttons)
             )
         
         logger.info(f"✅ File sent successfully to user {user_id}")
@@ -200,7 +211,6 @@ Click the button below to verify:
         await message.reply("❌ Error sending file!")
 
 
-# ✅ CRITICAL FIX: Group search with higher priority
 @Client.on_message(filters.text & filters.group, group=1)
 async def group_search_handler(client, message):
     """Handle movie search in GROUPS"""
@@ -231,11 +241,14 @@ async def group_search_handler(client, message):
         for file in files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
+                # ✅ FIX: Use original caption for display
+                original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error formatting file: {e}")
@@ -286,11 +299,14 @@ async def private_search(client, message):
         for file in files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
+                # ✅ FIX: Use original caption for display
+                original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
@@ -321,6 +337,4 @@ async def close_callback(client, query):
     await query.answer()
 
 
-# Log that this plugin loaded
 logger.info("✅ FILTERS PLUGIN LOADED")
-    
