@@ -69,7 +69,12 @@ async def start_command(client, message):
             return
     
     # Regular /start command
-    await message.reply("Welcome! Search for movies in the group or send me a movie name here.")
+    await message.reply(
+        "👋 Welcome!\n\n"
+        "🎬 Search for movies in the group\n"
+        "📁 Or send me a movie name here\n\n"
+        "Join: @movies_magic_club3"
+    )
 
 
 async def send_file_by_deeplink(client, message, file_id):
@@ -141,30 +146,64 @@ Click the button below to verify:
         await message.reply("❌ File not found!")
         return
     
+    # ✅ FIX 1: Better caption with all info
+    file_name = file_data.get('file_name', 'Unknown File')
+    file_size = get_size(file_data.get('file_size', 0))
+    
     # Build caption
-    try:
-        caption = CUSTOM_FILE_CAPTION.format(
-            file_name=file_data.get('file_name', 'Unknown'),
-            file_size=get_size(file_data.get('file_size', 0)),
-            caption=file_data.get('caption', '')
-        )
-    except:
-        caption = f"{file_data.get('file_name', 'File')}\n\nJoin: @movies_magic_club3"
+    if CUSTOM_FILE_CAPTION:
+        try:
+            caption = CUSTOM_FILE_CAPTION.format(
+                file_name=file_name,
+                file_size=file_size,
+                caption=file_data.get('caption', '')
+            )
+        except:
+            caption = f"📁 **{file_name}**\n📦 Size: {file_size}\n\n🎬 Join: @movies_magic_club3"
+    else:
+        # Default caption with better formatting
+        caption = f"""
+📁 **File Name:** `{file_name}`
+📦 **Size:** {file_size}
+
+🎬 **Join Our Channel:** @movies_magic_club3
+⚡ **For More Movies**
+"""
     
     # Build buttons
-    file_buttons = [[InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]]
+    file_buttons = [
+        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")],
+        [InlineKeyboardButton("📢 Updates", url="https://t.me/movies_magic_club3")]
+    ]
     
     # Send file
     try:
         telegram_file_id = file_data.get('file_id')
         file_type = file_data.get('file_type', 'document')
         
+        logger.info(f"📤 Sending: {file_name}")
+        
         if file_type == 'video':
-            await message.reply_video(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
+            await message.reply_video(
+                telegram_file_id, 
+                caption=caption, 
+                reply_markup=InlineKeyboardMarkup(file_buttons), 
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
         elif file_type == 'audio':
-            await message.reply_audio(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
+            await message.reply_audio(
+                telegram_file_id, 
+                caption=caption, 
+                reply_markup=InlineKeyboardMarkup(file_buttons), 
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
         else:
-            await message.reply_document(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
+            await message.reply_document(
+                telegram_file_id, 
+                caption=caption, 
+                reply_markup=InlineKeyboardMarkup(file_buttons), 
+                parse_mode=enums.ParseMode.MARKDOWN
+            )
         
         logger.info(f"✅ File sent successfully")
         
@@ -208,11 +247,11 @@ async def group_search(client, message):
             logger.error(f"Error: {e}")
             continue
     
-    file_text += f"\nJoin: @movies_magic_club3"
+    file_text += f"🎬 Join: @movies_magic_club3"
     
     buttons = [
-        [InlineKeyboardButton("LANGUAGE", callback_data=f"lang#{search}"),
-         InlineKeyboardButton("Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -228,7 +267,6 @@ async def group_search(client, message):
 async def private_search(client, message):
     """Handle movie search in PRIVATE chat"""
     search = message.text.strip()
-    user_id = message.from_user.id
     
     logger.info(f"🔍 Private search: {search}")
     
@@ -257,13 +295,20 @@ async def private_search(client, message):
         except Exception as e:
             logger.error(f"Error: {e}")
     
+    file_text += f"🎬 Join: @movies_magic_club3"
+    
     buttons = [
-        [InlineKeyboardButton("LANGUAGE", callback_data=f"lang#{search}"),
-         InlineKeyboardButton("Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
-    await message.reply(file_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply(
+        file_text, 
+        reply_markup=InlineKeyboardMarkup(buttons), 
+        parse_mode=enums.ParseMode.HTML, 
+        disable_web_page_preview=True
+    )
 
 
 @Client.on_callback_query(filters.regex("^close$"))
@@ -271,4 +316,4 @@ async def close_callback(client, query):
     """Handle close button"""
     await query.message.delete()
     await query.answer()
-                
+    
