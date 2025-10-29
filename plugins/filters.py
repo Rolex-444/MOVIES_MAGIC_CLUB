@@ -8,6 +8,7 @@ from utils.verification import generate_verify_token, create_universal_shortlink
 from config import Config
 from utils.file_properties import get_size
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,44 @@ verify_db = VerifyDB()
 
 # Get bot username (set on startup)
 bot_username = None
+
+# Your channel info
+YOUR_CHANNEL = "@movies_magic_club3"
+YOUR_CHANNEL_LINK = "https://t.me/movies_magic_club3"
+
+
+def clean_caption(caption):
+    """
+    Remove other channel links and mentions from caption
+    Keep only the movie info
+    """
+    if not caption:
+        return caption
+    
+    # Remove @ mentions (like @OldChannel, @ViP_LinkzZ, etc.)
+    caption = re.sub(r'@\w+', '', caption)
+    
+    # Remove telegram links (t.me/channel, telegram.me/channel)
+    caption = re.sub(r'(https?://)?(t\.me|telegram\.me)/\S+', '', caption)
+    
+    # Remove common spam words/phrases (case insensitive)
+    spam_words = [
+        'join', 'subscribe', 'channel', 'group', 'follow',
+        'movie', 'download', 'here', 'now', 'free', 'latest',
+        '👉', '⚡', '🎬', '📢', '▶️', '🔥', '✅'
+    ]
+    
+    for word in spam_words:
+        # Remove whole words only (not part of movie names)
+        caption = re.sub(rf'\b{word}\b', '', caption, flags=re.IGNORECASE)
+    
+    # Remove multiple spaces
+    caption = re.sub(r'\s+', ' ', caption)
+    
+    # Remove extra dots, dashes at start/end
+    caption = caption.strip(' .-_|•~')
+    
+    return caption
 
 
 @Client.on_message(filters.command("start") & filters.private)
@@ -72,10 +111,10 @@ async def start_command(client, message):
     
     # Regular /start command
     await message.reply(
-        "👋 Welcome!\n\n"
-        "🎬 Search for movies in the group\n"
-        "📁 Or send me a movie name here\n\n"
-        "Join: @movies_magic_club3"
+        f"👋 Welcome!\n\n"
+        f"🎬 Search for movies in the group\n"
+        f"📁 Or send me a movie name here\n\n"
+        f"Join: {YOUR_CHANNEL}"
     )
 
 
@@ -148,8 +187,7 @@ Click the button below to verify:
         await message.reply("❌ File not found!")
         return
     
-    # ✅ FIX: Use ORIGINAL caption instead of modified file_name
-    # Priority: caption > file_name
+    # ✅ NEW: Clean caption - remove other channel links
     original_caption = file_data.get('caption', '')
     file_name = file_data.get('file_name', 'Unknown File')
     file_size = get_size(file_data.get('file_size', 0))
@@ -157,27 +195,29 @@ Click the button below to verify:
     # Use original caption if available, otherwise use filename
     display_name = original_caption if original_caption else file_name
     
-    logger.info(f"📝 Original caption: {original_caption[:100]}")
-    logger.info(f"📝 File name: {file_name[:100]}")
-    logger.info(f"📤 Sending with caption: {display_name[:100]}")
+    # Clean the caption to remove other channel links
+    cleaned_caption = clean_caption(display_name)
     
-    # Build caption
+    logger.info(f"📝 Original: {display_name[:80]}")
+    logger.info(f"🧹 Cleaned: {cleaned_caption[:80]}")
+    
+    # Build final caption with YOUR channel only
     if CUSTOM_FILE_CAPTION:
         try:
             caption = CUSTOM_FILE_CAPTION.format(
-                file_name=display_name,
+                file_name=cleaned_caption,
                 file_size=file_size,
-                caption=original_caption
+                caption=cleaned_caption
             )
         except:
-            caption = f"📁 **{display_name}**\n📦 Size: {file_size}\n\n🎬 Join: @movies_magic_club3"
+            caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
     else:
-        # Simple caption with original name
-        caption = f"{display_name}\n\n🎬 Join: @movies_magic_club3"
+        # Simple clean caption with only your channel
+        caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
     
-    # Build buttons
+    # Build buttons with YOUR channel only
     file_buttons = [
-        [InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]
+        [InlineKeyboardButton("🎬 Join Our Channel", url=YOUR_CHANNEL_LINK)]
     ]
     
     # Send file
@@ -241,20 +281,22 @@ async def group_search_handler(client, message):
         for file in files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
-                # ✅ FIX: Use original caption for display
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
+                
+                # ✅ Clean caption for search results too
+                cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error formatting file: {e}")
                 continue
         
-        file_text += f"🎬 Join: @movies_magic_club3"
+        file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
@@ -299,19 +341,21 @@ async def private_search(client, message):
         for file in files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
-                # ✅ FIX: Use original caption for display
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
+                
+                # ✅ Clean caption for search results
+                cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
         
-        file_text += f"🎬 Join: @movies_magic_club3"
+        file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
@@ -338,3 +382,4 @@ async def close_callback(client, query):
 
 
 logger.info("✅ FILTERS PLUGIN LOADED")
+            
