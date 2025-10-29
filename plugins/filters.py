@@ -3,8 +3,8 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQ
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS, SHORTLINK_URL, SHORTLINK_API, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION
-from utils.shortlink_api import get_shortlink, generate_verify_token
+from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT
+from utils.verification import generate_verify_token, generate_monetized_verification_link
 from config import Config
 from utils.file_properties import get_size
 import logging
@@ -17,7 +17,6 @@ verify_db = VerifyDB()
 # Get bot username (set on startup)
 bot_username = None
 
-
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
     """Handle /start command and deep links"""
@@ -29,247 +28,186 @@ async def start_command(client, message):
     user_id = message.from_user.id
     
     # Add user to database
-    await db.add_user(user_id)
+    await db.add_user(user_id, message.from_user.first_name)
     
     # Check if it's a deep link
     if len(message.command) > 1:
-        data = message.command[1]
+        payload = message.command[1]
         
-        # File deep link
-        if data.startswith("file_"):
-            file_id = data.split("_", 1)[1]
-            await send_file_by_deeplink(client, message, file_id)
+        # Handle verification token
+        if payload.startswith('verify_'):
+            token = payload  # Keep full token with prefix
+            
+            # Verify the token
+            token_valid = await verify_db.verify_token(user_id, token)
+            
+            if token_valid:
+                # ✅ CRITICAL: Mark user as verified
+                await verify_db.update_verification(user_id)
+                
+                await message.reply(
+                    "✅ **Verification Successful!**\n\n"
+                    "You can now access files without verification for 6 hours.\n"
+                    "Send me a movie name to search!",
+                    quote=True
+                )
+                logger.info(f"✅ User {user_id} successfully verified!")
+            else:
+                await message.reply(
+                    "❌ **Verification Failed!**\n\n"
+                    "Token is invalid or expired. Please try again.",
+                    quote=True
+                )
+                logger.warning(f"❌ User {user_id} verification failed - invalid token")
+            return
+        
+        # Handle file requests
+        elif len(payload) == 24:  # MongoDB ObjectId
+            try:
+                file_data = await db.get_file_by_id(payload)
+                if file_data:
+                    await send_file_with_verification(client, message, file_data)
+                else:
+                    await message.reply("❌ File not found!")
+            except Exception as e:
+                logger.error(f"Error fetching file: {e}")
+                await message.reply("❌ Error fetching file!")
             return
     
-    # Regular /start command
-    await message.reply("Welcome! Search for movies in the group.")
+    # Normal start message
+    await message.reply(
+        f"👋 Hello {message.from_user.mention}!\n\n"
+        "I'm a movie filter bot. Send me a movie name to search!",
+        quote=True
+    )
 
 
-async def send_file_by_deeplink(client, message, file_id):
-    """Send file when accessed via deep link - WITH DEBUGGING"""
+async def send_file_with_verification(client, message, file_data):
+    """Send file with verification check"""
     user_id = message.from_user.id
     
-    logger.info(f"")
-    logger.info(f"{'='*70}")
-    logger.info(f"📥 DEEP LINK FILE REQUEST")
-    logger.info(f"{'='*70}")
-    logger.info(f"👤 User ID: {user_id}")
-    logger.info(f"📄 File ID: {file_id}")
-    logger.info(f"🔑 ADMINS list: {ADMINS}")
-    logger.info(f"❓ Is user admin? {user_id in ADMINS}")
-    logger.info(f"{'='*70}")
+    # Check if user is verified
+    is_verified = await verify_db.is_verified(user_id)
+    user_data = await verify_db.get_user(user_id)
     
-    # Check if user is admin (admins bypass everything)
-    if user_id not in ADMINS:
-        logger.info(f"✅ User {user_id} is NOT admin - checking verification...")
+    if not is_verified:
+        # Check free file limit
+        files_sent = user_data.get('files_sent', 0) if user_data else 0
         
-        # Check if user can access file
-        can_access = await verify_db.can_access_file(user_id)
+        logger.info(f"📊 User {user_id}: files_sent={files_sent}, limit={FREE_FILE_LIMIT}")
         
-        logger.info(f"🔍 can_access_file returned: {can_access}")
-        
-        if not can_access:
-            logger.info(f"🚫 Access DENIED - showing verification link")
-            
-            # User needs to verify
+        if files_sent >= FREE_FILE_LIMIT:
+            # Generate verification link
             token = generate_verify_token()
-            await verify_db.set_verify_token(user_id, token, 600)
+            await verify_db.set_verify_token(user_id, f"verify_{token}", 600)  # 10 min expiry
             
-            me = await client.get_me()
-            verify_url = f"https://t.me/{me.username}?start=verify_{token}"
-            short_url = get_shortlink(verify_url, SHORTLINK_URL, SHORTLINK_API)
+            # Get bot username
+            if not bot_username:
+                me = await client.get_me()
+                bot_username = me.username
+            
+            # Create monetized shortlink
+            verify_link = generate_monetized_verification_link(bot_username, token)
             
             buttons = [
-                [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
+                [InlineKeyboardButton("🔐 Verify Now", url=verify_link)],
                 [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)]
             ]
             
             await message.reply(
-                Config.VERIFY_TXT,
+                Config.VERIFY_TXT.format(
+                    first=message.from_user.first_name,
+                    last=message.from_user.last_name or "",
+                    username=f"@{message.from_user.username}" if message.from_user.username else "User",
+                    mention=message.from_user.mention,
+                    id=user_id
+                ),
                 reply_markup=InlineKeyboardMarkup(buttons),
-                parse_mode=enums.ParseMode.HTML,
-                disable_web_page_preview=True
+                quote=True
             )
-            logger.info(f"✅ Verification message sent to user {user_id}")
-            logger.info(f"{'='*70}")
+            logger.info(f"🔒 User {user_id} needs verification - {files_sent}/{FREE_FILE_LIMIT} files used")
             return
-        
-        logger.info(f"✅ Access GRANTED - preparing to send file")
-        
-        # Increment file attempts for non-verified users
-        is_verified = await verify_db.is_verified(user_id)
-        logger.info(f"🔍 is_verified returned: {is_verified}")
-        
-        if not is_verified:
-            logger.info(f"📈 Incrementing file attempts")
-            await verify_db.increment_file_attempts(user_id)
-        else:
-            logger.info(f"✅ User verified - NOT incrementing")
-    else:
-        logger.info(f"👑 User IS ADMIN - bypassing all checks")
     
-    logger.info(f"📤 Fetching file from database...")
-    
-    # Get file data
+    # Send the file
     try:
-        if len(file_id) == 24:
-            mongo_id = ObjectId(file_id)
-        else:
-            mongo_id = file_id
-        
-        file_data = await db.get_file(mongo_id)
-        
-    except Exception as e:
-        logger.error(f"❌ Error getting file: {e}")
-        file_data = None
-    
-    if not file_data:
-        logger.error(f"❌ File not found")
-        await message.reply("❌ File not found!")
-        logger.info(f"{'='*70}")
-        return
-    
-    # Build caption
-    try:
-        caption = CUSTOM_FILE_CAPTION if CUSTOM_FILE_CAPTION else Config.FILE_CAPTION
-        caption = caption.format(
+        file_caption = CUSTOM_FILE_CAPTION.format(
             file_name=file_data.get('file_name', 'Unknown'),
             file_size=get_size(file_data.get('file_size', 0)),
-            caption=file_data.get('caption', '')
+            file_caption=file_data.get('caption', '')
+        ) if CUSTOM_FILE_CAPTION else file_data.get('file_name', 'File')
+        
+        await client.send_cached_media(
+            chat_id=message.chat.id,
+            file_id=file_data['file_id'],
+            caption=file_caption,
+            reply_to_message_id=message.id
         )
-    except:
-        caption = f"<b>{file_data.get('file_name', 'File')}</b>\n\nJoin: @movies_magic_club3"
-    
-    # Build buttons
-    file_buttons = [[InlineKeyboardButton("🎬 Join Channel", url="https://t.me/movies_magic_club3")]]
-    
-    # Send file
-    try:
-        telegram_file_id = file_data.get('file_id')
-        file_type = file_data.get('file_type', 'document')
         
-        logger.info(f"📤 Sending file: {file_data.get('file_name')}")
+        # Increment file counter for non-verified users
+        if not is_verified:
+            await verify_db.increment_files_sent(user_id)
+            logger.info(f"📈 User {user_id} file counter incremented to {files_sent + 1}")
         
-        if file_type == 'video':
-            await message.reply_video(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
-        elif file_type == 'audio':
-            await message.reply_audio(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
-        else:
-            await message.reply_document(telegram_file_id, caption=caption, reply_markup=InlineKeyboardMarkup(file_buttons), parse_mode=enums.ParseMode.HTML)
-        
-        logger.info(f"✅ File sent successfully")
-        logger.info(f"{'='*70}")
+        logger.info(f"✅ File sent to user {user_id}")
         
     except Exception as e:
-        logger.error(f"❌ Error sending file: {e}")
+        logger.error(f"Error sending file: {e}")
         await message.reply("❌ Error sending file!")
-        logger.info(f"{'='*70}")
 
 
-@Client.on_message(filters.text & filters.group & ~filters.command(["start"]))
-async def group_search(client, message):
-    """Handle movie search in GROUPS"""
-    search = message.text.strip()
+@Client.on_message(filters.text & filters.private & ~filters.command(['start']))
+async def search_files(client, message):
+    """Search and display files"""
+    user_id = message.from_user.id
+    search_query = message.text
     
-    # Ignore very short searches
-    if len(search) < 3:
-        return
-    
-    logger.info(f"🔍 Group search from {message.from_user.id}: {search}")
-    
-    # Search in database
-    files, total = await db.search_files(search)
+    # Search for files
+    files = await db.search_files(search_query)
     
     if not files:
-        logger.info(f"❌ No results for: {search}")
+        await message.reply(
+            f"❌ No results found for '{search_query}'\n\n"
+            "Try different keywords!",
+            quote=True
+        )
         return
     
-    # Get bot username
-    global bot_username
-    if not bot_username:
-        me = await client.get_me()
-        bot_username = me.username
-    
-    # Build file list with deep links
-    file_text = f"📁 Found {total} files\n\n"
-    
-    for idx, file in enumerate(files[:10], 1):
-        try:
-            file_id = str(file.get('_id', ''))
-            file_name = file.get('file_name', 'Unknown')
-            file_size = get_size(file.get('file_size', 0))
-            
-            # Create deep link
-            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            
-            # Format as clickable link
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
-            file_text += f"{clickable_text}\n\n"
-            
-        except Exception as e:
-            logger.error(f"Error: {e}")
-            continue
-    
-    file_text += f"\nJoin: @movies_magic_club3"
-    
-    # Add buttons
-    buttons = [
-        [InlineKeyboardButton("LANGUAGE", callback_data=f"lang#{search}"),
-         InlineKeyboardButton("Quality", callback_data=f"qual#{search}")],
-        [InlineKeyboardButton("❌ Close", callback_data="close")]
-    ]
+    # Display results
+    buttons = []
+    for file in files[:50]:  # Limit to 50 results
+        file_id_str = str(file['_id'])
+        file_name = file.get('file_name', 'Unknown')
+        file_size = get_size(file.get('file_size', 0))
+        
+        button_text = f"📁 {file_name} ({file_size})"
+        buttons.append([InlineKeyboardButton(
+            button_text,
+            callback_data=f"file_{file_id_str}"
+        )])
     
     await message.reply(
-        file_text,
+        f"🔍 Found {len(files)} results for '{search_query}'\n\n"
+        "Click on a file to download:",
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode=enums.ParseMode.HTML,
-        disable_web_page_preview=True
+        quote=True
     )
-    logger.info(f"✅ Search results sent")
 
 
-@Client.on_message(filters.text & filters.private & ~filters.command(["start", "help"]))
-async def private_search(client, message):
-    """Handle movie search in PRIVATE chat"""
-    search = message.text.strip()
-    user_id = message.from_user.id
+@Client.on_callback_query(filters.regex("^file_"))
+async def file_callback(client, query: CallbackQuery):
+    """Handle file button clicks"""
+    file_id_str = query.data.split("_", 1)[1]
     
-    logger.info(f"🔍 Private search from {user_id}: {search}")
+    try:
+        file_data = await db.get_file_by_id(file_id_str)
+        if file_data:
+            # Create a fake message object for send_file_with_verification
+            query.message.from_user = query.from_user
+            await send_file_with_verification(client, query.message, file_data)
+            await query.answer("✅ Processing your request...")
+        else:
+            await query.answer("❌ File not found!", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error in file callback: {e}")
+        await query.answer("❌ Error fetching file!", show_alert=True)
     
-    # Search in database
-    files, total = await db.search_files(search)
-    
-    if not files:
-        await message.reply(f"❌ No files found for: {search}")
-        return
-    
-    # Get bot username
-    global bot_username
-    if not bot_username:
-        me = await client.get_me()
-        bot_username = me.username
-    
-    # Build file list
-    file_text = f"📁 Found {total} files\n\n"
-    
-    for file in files[:10]:
-        try:
-            file_id = str(file.get('_id', ''))
-            file_name = file.get('file_name', 'Unknown')
-            file_size = get_size(file.get('file_size', 0))
-            deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
-            file_text += f"{clickable_text}\n\n"
-        except Exception as e:
-            logger.error(f"Error: {e}")
-    
-    buttons = [[InlineKeyboardButton("❌ Close", callback_data="close")]]
-    
-    await message.reply(file_text, reply_markup=InlineKeyboardMarkup(buttons), parse_mode=enums.ParseMode.HTML, disable_web_page_preview=True)
-
-
-@Client.on_callback_query(filters.regex("^close$"))
-async def close_callback(client, query):
-    """Handle close button"""
-    await query.message.delete()
-            
