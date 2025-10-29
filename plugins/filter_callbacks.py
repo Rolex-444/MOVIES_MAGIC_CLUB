@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 db = Database()
 
-# ✅ FIX 2: More comprehensive language keywords
+# Language keywords for filtering
 LANGUAGE_KEYWORDS = {
     'Tamil': ['tamil', 'tam', '.tam.', '[tam]', 'தமிழ்', 'tmv', 'tn'],
     'Telugu': ['telugu', 'tel', '.tel.', '[tel]', 'తెలుగు', 'tlu'],
@@ -28,41 +28,46 @@ QUALITY_KEYWORDS = {
 
 
 def filter_files(files, language=None, quality=None):
-    """Filter files by language and quality with better detection"""
+    """Filter files by language and quality using ORIGINAL CAPTION"""
     if not files:
         return []
     
     filtered = []
     
     for file in files:
+        # ✅ FIX: Check BOTH caption and filename
+        original_caption = file.get('caption', '').lower()
         file_name = file.get('file_name', '').lower()
+        
+        # Combine both for searching
+        search_text = f"{original_caption} {file_name}"
         
         match = True
         
         # Language filter
         if language and language != 'All':
             keywords = LANGUAGE_KEYWORDS.get(language, [])
-            # Check if ANY keyword exists in filename
-            lang_found = any(kw.lower() in file_name for kw in keywords)
+            lang_found = any(kw.lower() in search_text for kw in keywords)
             
             if not lang_found:
                 match = False
-                logger.debug(f"❌ Language filter: {file_name[:50]} - No {language} keywords found")
+                logger.debug(f"❌ {file_name[:50]} - No {language} keywords")
+            else:
+                logger.debug(f"✅ {file_name[:50]} - Matched {language}")
         
         # Quality filter
         if quality and quality != 'All':
             keywords = QUALITY_KEYWORDS.get(quality, [])
-            qual_found = any(kw.lower() in file_name for kw in keywords)
+            qual_found = any(kw.lower() in search_text for kw in keywords)
             
             if not qual_found:
                 match = False
-                logger.debug(f"❌ Quality filter: {file_name[:50]} - No {quality} keywords found")
+                logger.debug(f"❌ {file_name[:50]} - No {quality}")
         
         if match:
             filtered.append(file)
-            logger.debug(f"✅ Matched: {file_name[:50]}")
     
-    logger.info(f"🎬 Filtered: {len(filtered)}/{len(files)} files")
+    logger.info(f"🎬 Filtered: {len(filtered)}/{len(files)} files for {language} {quality}")
     return filtered
 
 
@@ -150,11 +155,14 @@ async def set_language_filter(client, query):
         for file in filtered_files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
+                # ✅ FIX: Show original caption
+                original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
@@ -209,11 +217,14 @@ async def set_quality_filter(client, query):
         for file in filtered_files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
+                # ✅ FIX: Show original caption
+                original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
@@ -257,11 +268,14 @@ async def back_to_results(client, query):
     for file in files[:10]:
         try:
             file_id = str(file.get('_id', ''))
+            # ✅ FIX: Show original caption
+            original_caption = file.get('caption', '')
             file_name = file.get('file_name', 'Unknown')
+            display_name = original_caption if original_caption else file_name
             file_size = get_size(file.get('file_size', 0))
             
             deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {file_name}</a>'
+            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
             file_text += f"{clickable_text}\n\n"
         except Exception as e:
             logger.error(f"Error: {e}")
@@ -281,3 +295,7 @@ async def back_to_results(client, query):
         disable_web_page_preview=True
     )
     await query.answer("🔙 Back to all results")
+
+
+logger.info("✅ FILTER CALLBACKS PLUGIN LOADED")
+        
