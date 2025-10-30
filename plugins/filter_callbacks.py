@@ -250,7 +250,7 @@ async def set_language_filter(client, query):
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
          InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
-        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -311,7 +311,7 @@ async def set_quality_filter(client, query):
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
          InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
-        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -372,7 +372,7 @@ async def set_season_filter(client, query):
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
          InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
-        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -433,7 +433,7 @@ async def set_episode_filter(client, query):
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
          InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
-        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -483,7 +483,7 @@ async def back_to_results(client, query):
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
         [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
          InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
-        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
