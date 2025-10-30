@@ -3,6 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from utils.file_properties import get_size
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 db = Database()
@@ -27,19 +28,16 @@ QUALITY_KEYWORDS = {
 }
 
 
-def filter_files(files, language=None, quality=None):
-    """Filter files by language and quality using ORIGINAL CAPTION"""
+def filter_files(files, language=None, quality=None, season=None, episode=None):
+    """Filter files by language, quality, season and episode"""
     if not files:
         return []
     
     filtered = []
     
     for file in files:
-        # ✅ FIX: Check BOTH caption and filename
         original_caption = file.get('caption', '').lower()
         file_name = file.get('file_name', '').lower()
-        
-        # Combine both for searching
         search_text = f"{original_caption} {file_name}"
         
         match = True
@@ -48,26 +46,45 @@ def filter_files(files, language=None, quality=None):
         if language and language != 'All':
             keywords = LANGUAGE_KEYWORDS.get(language, [])
             lang_found = any(kw.lower() in search_text for kw in keywords)
-            
             if not lang_found:
                 match = False
-                logger.debug(f"❌ {file_name[:50]} - No {language} keywords")
-            else:
-                logger.debug(f"✅ {file_name[:50]} - Matched {language}")
         
         # Quality filter
         if quality and quality != 'All':
             keywords = QUALITY_KEYWORDS.get(quality, [])
             qual_found = any(kw.lower() in search_text for kw in keywords)
-            
             if not qual_found:
                 match = False
-                logger.debug(f"❌ {file_name[:50]} - No {quality}")
+        
+        # Season filter (e.g., S01, S02, Season 1)
+        if season and season != 'All':
+            season_patterns = [
+                f's{season}',  # S01
+                f's0{season}',  # S01
+                f'season {season}',  # Season 1
+                f'season{season}',  # Season1
+            ]
+            season_found = any(pattern in search_text for pattern in season_patterns)
+            if not season_found:
+                match = False
+        
+        # Episode filter (e.g., E01, E02, Episode 1)
+        if episode and episode != 'All':
+            episode_patterns = [
+                f'e{episode}',  # E01
+                f'e0{episode}',  # E01
+                f'episode {episode}',  # Episode 1
+                f'episode{episode}',  # Episode1
+                f'ep{episode}',  # Ep01
+            ]
+            episode_found = any(pattern in search_text for pattern in episode_patterns)
+            if not episode_found:
+                match = False
         
         if match:
             filtered.append(file)
     
-    logger.info(f"🎬 Filtered: {len(filtered)}/{len(files)} files for {language} {quality}")
+    logger.info(f"🎬 Filtered: {len(filtered)}/{len(files)} files")
     return filtered
 
 
@@ -78,6 +95,16 @@ async def get_bot_username(client):
         return me.username
     except:
         return None
+
+
+def clean_caption(caption):
+    """Clean caption for display"""
+    if not caption:
+        return caption
+    caption = re.sub(r'@\w+', '', caption)
+    caption = re.sub(r'(https?://)?(t\.me|telegram\.me)/\S+', '', caption)
+    caption = re.sub(r'\s+', ' ', caption)
+    return caption.strip()
 
 
 # Language Filter Menu
@@ -125,6 +152,58 @@ async def quality_menu(client, query):
     await query.answer("🎬 Select quality")
 
 
+# Season Filter Menu
+@Client.on_callback_query(filters.regex(r"^season#"))
+async def season_menu(client, query):
+    """Show season selection menu"""
+    search = query.data.split("#")[1]
+    
+    season_buttons = [
+        [InlineKeyboardButton("S1", callback_data=f"setseason_1#{search}"),
+         InlineKeyboardButton("S2", callback_data=f"setseason_2#{search}"),
+         InlineKeyboardButton("S3", callback_data=f"setseason_3#{search}")],
+        [InlineKeyboardButton("S4", callback_data=f"setseason_4#{search}"),
+         InlineKeyboardButton("S5", callback_data=f"setseason_5#{search}"),
+         InlineKeyboardButton("S6", callback_data=f"setseason_6#{search}")],
+        [InlineKeyboardButton("S7", callback_data=f"setseason_7#{search}"),
+         InlineKeyboardButton("S8", callback_data=f"setseason_8#{search}"),
+         InlineKeyboardButton("S9", callback_data=f"setseason_9#{search}")],
+        [InlineKeyboardButton("S10", callback_data=f"setseason_10#{search}"),
+         InlineKeyboardButton("🌐 All Seasons", callback_data=f"setseason_All#{search}")],
+        [InlineKeyboardButton("◀️ Back", callback_data=f"back#{search}")]
+    ]
+    
+    await query.message.edit_reply_markup(
+        reply_markup=InlineKeyboardMarkup(season_buttons)
+    )
+    await query.answer("📺 Select season")
+
+
+# Episode Filter Menu
+@Client.on_callback_query(filters.regex(r"^episode#"))
+async def episode_menu(client, query):
+    """Show episode selection menu"""
+    search = query.data.split("#")[1]
+    
+    episode_buttons = []
+    # Episodes 1-12 in 4 rows
+    for i in range(0, 12, 3):
+        row = []
+        for j in range(3):
+            ep_num = i + j + 1
+            if ep_num <= 12:
+                row.append(InlineKeyboardButton(f"E{ep_num:02d}", callback_data=f"setepisode_{ep_num}#{search}"))
+        episode_buttons.append(row)
+    
+    episode_buttons.append([InlineKeyboardButton("🌐 All Episodes", callback_data=f"setepisode_All#{search}")])
+    episode_buttons.append([InlineKeyboardButton("◀️ Back", callback_data=f"back#{search}")])
+    
+    await query.message.edit_reply_markup(
+        reply_markup=InlineKeyboardMarkup(episode_buttons)
+    )
+    await query.answer("📋 Select episode")
+
+
 # Apply Language Filter
 @Client.on_callback_query(filters.regex(r"^setlang_"))
 async def set_language_filter(client, query):
@@ -133,49 +212,45 @@ async def set_language_filter(client, query):
     language = data[0].replace("setlang_", "")
     search = data[1]
     
-    logger.info(f"🎬 Filtering by language: {language} for search: {search}")
+    logger.info(f"🎬 Filtering by language: {language}")
     
-    # Search files
     files, total = await db.search_files(search)
-    logger.info(f"📁 Total files found: {total}")
     
-    # Filter by language
     if language != 'All':
         filtered_files = filter_files(files, language=language)
     else:
         filtered_files = files
     
-    # Get bot username
     bot_username = await get_bot_username(client)
     
-    # Build message
     if filtered_files:
         file_text = f"📁 Found {len(filtered_files)} {language} files for `{search}`\n\n"
         
         for file in filtered_files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
-                # ✅ FIX: Show original caption
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
+                cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
     else:
-        file_text = f"❌ No {language} files found for `{search}`\n\n"
-        file_text += "Try selecting a different language or 'All Languages'"
+        file_text = f"❌ No {language} files found for `{search}`"
     
     file_text += f"\n🎬 Join: @movies_magic_club3"
     
-    # Buttons
     buttons = [
         [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+         InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -188,7 +263,7 @@ async def set_language_filter(client, query):
         )
         await query.answer(f"✅ Showing {language} files", show_alert=False)
     except Exception as e:
-        logger.error(f"Error editing message: {e}")
+        logger.error(f"Error: {e}")
         await query.answer("❌ Error filtering", show_alert=True)
 
 
@@ -199,8 +274,6 @@ async def set_quality_filter(client, query):
     data = query.data.split("#")
     quality = data[0].replace("setqual_", "")
     search = data[1]
-    
-    logger.info(f"🎬 Filtering by quality: {quality}")
     
     files, total = await db.search_files(search)
     
@@ -217,26 +290,28 @@ async def set_quality_filter(client, query):
         for file in filtered_files[:10]:
             try:
                 file_id = str(file.get('_id', ''))
-                # ✅ FIX: Show original caption
                 original_caption = file.get('caption', '')
                 file_name = file.get('file_name', 'Unknown')
                 display_name = original_caption if original_caption else file_name
+                cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
                 
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
     else:
-        file_text = f"❌ No {quality} files found for `{search}`\n\n"
-        file_text += "Try selecting a different quality or 'All Quality'"
+        file_text = f"❌ No {quality} files found for `{search}`"
     
     file_text += f"\n🎬 Join: @movies_magic_club3"
     
     buttons = [
         [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+         InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -249,7 +324,128 @@ async def set_quality_filter(client, query):
         )
         await query.answer(f"✅ Showing {quality} files", show_alert=False)
     except Exception as e:
-        logger.error(f"Error editing message: {e}")
+        await query.answer("❌ Error filtering", show_alert=True)
+
+
+# Apply Season Filter
+@Client.on_callback_query(filters.regex(r"^setseason_"))
+async def set_season_filter(client, query):
+    """Apply season filter"""
+    data = query.data.split("#")
+    season = data[0].replace("setseason_", "")
+    search = data[1]
+    
+    files, total = await db.search_files(search)
+    
+    if season != 'All':
+        filtered_files = filter_files(files, season=season)
+    else:
+        filtered_files = files
+    
+    bot_username = await get_bot_username(client)
+    
+    if filtered_files:
+        season_text = f"S{season}" if season != 'All' else 'All Seasons'
+        file_text = f"📁 Found {len(filtered_files)} {season_text} files for `{search}`\n\n"
+        
+        for file in filtered_files[:10]:
+            try:
+                file_id = str(file.get('_id', ''))
+                original_caption = file.get('caption', '')
+                file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
+                cleaned_name = clean_caption(display_name)
+                file_size = get_size(file.get('file_size', 0))
+                
+                deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                file_text += f"{clickable_text}\n\n"
+            except Exception as e:
+                logger.error(f"Error: {e}")
+    else:
+        file_text = f"❌ No Season {season} files found for `{search}`"
+    
+    file_text += f"\n🎬 Join: @movies_magic_club3"
+    
+    buttons = [
+        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+         InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ]
+    
+    try:
+        await query.message.edit_text(
+            file_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+        await query.answer(f"✅ Showing Season {season}", show_alert=False)
+    except Exception as e:
+        await query.answer("❌ Error filtering", show_alert=True)
+
+
+# Apply Episode Filter
+@Client.on_callback_query(filters.regex(r"^setepisode_"))
+async def set_episode_filter(client, query):
+    """Apply episode filter"""
+    data = query.data.split("#")
+    episode = data[0].replace("setepisode_", "")
+    search = data[1]
+    
+    files, total = await db.search_files(search)
+    
+    if episode != 'All':
+        filtered_files = filter_files(files, episode=episode)
+    else:
+        filtered_files = files
+    
+    bot_username = await get_bot_username(client)
+    
+    if filtered_files:
+        episode_text = f"E{episode}" if episode != 'All' else 'All Episodes'
+        file_text = f"📁 Found {len(filtered_files)} {episode_text} files for `{search}`\n\n"
+        
+        for file in filtered_files[:10]:
+            try:
+                file_id = str(file.get('_id', ''))
+                original_caption = file.get('caption', '')
+                file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
+                cleaned_name = clean_caption(display_name)
+                file_size = get_size(file.get('file_size', 0))
+                
+                deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                file_text += f"{clickable_text}\n\n"
+            except Exception as e:
+                logger.error(f"Error: {e}")
+    else:
+        file_text = f"❌ No Episode {episode} files found for `{search}`"
+    
+    file_text += f"\n🎬 Join: @movies_magic_club3"
+    
+    buttons = [
+        [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+         InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+         InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
+        [InlineKeyboardButton("❌ Close", callback_data="close")]
+    ]
+    
+    try:
+        await query.message.edit_text(
+            file_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+        await query.answer(f"✅ Showing Episode {episode}", show_alert=False)
+    except Exception as e:
         await query.answer("❌ Error filtering", show_alert=True)
 
 
@@ -268,14 +464,14 @@ async def back_to_results(client, query):
     for file in files[:10]:
         try:
             file_id = str(file.get('_id', ''))
-            # ✅ FIX: Show original caption
             original_caption = file.get('caption', '')
             file_name = file.get('file_name', 'Unknown')
             display_name = original_caption if original_caption else file_name
+            cleaned_name = clean_caption(display_name)
             file_size = get_size(file.get('file_size', 0))
             
             deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {display_name}</a>'
+            clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
             file_text += f"{clickable_text}\n\n"
         except Exception as e:
             logger.error(f"Error: {e}")
@@ -285,6 +481,9 @@ async def back_to_results(client, query):
     buttons = [
         [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
          InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+        [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+         InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+        [InlineKeyboardButton("18+ RARE VIDEOS💦", url="https://t.me/REAL_TERABOX_PRO_bot")],
         [InlineKeyboardButton("❌ Close", callback_data="close")]
     ]
     
@@ -297,5 +496,5 @@ async def back_to_results(client, query):
     await query.answer("🔙 Back to all results")
 
 
-logger.info("✅ FILTER CALLBACKS PLUGIN LOADED")
-        
+logger.info("✅ FILTER CALLBACKS WITH SEASON & EPISODE LOADED")
+                    
