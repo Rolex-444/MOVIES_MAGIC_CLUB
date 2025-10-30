@@ -1,4 +1,4 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.users import UserDB
@@ -25,14 +25,14 @@ Bot: @{client.username}
 Owner: @Siva9789
 """
     
-    await message.reply(text, parse_mode="html", disable_web_page_preview=True)
+    await message.reply(text, disable_web_page_preview=True)
 
 
 @Client.on_message(filters.command("broadcast") & filters.user(ADMINS) & filters.reply)
 async def broadcast_command(client, message):
     users = await user_db.get_all_users()
     broadcast_msg = message.reply_to_message
-    status = await message.reply("📤 Starting broadcast...", parse_mode="html")
+    status = await message.reply("📤 Starting broadcast...")
     
     success = 0
     failed = 0
@@ -60,7 +60,6 @@ async def delete_all_files(client, message):
     await message.reply(
         "⚠️ Are you sure you want to delete ALL files from the database?",
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="html",
         disable_web_page_preview=True
     )
 
@@ -68,38 +67,35 @@ async def delete_all_files(client, message):
 @Client.on_callback_query(filters.regex("^confirm_delete_all$") & filters.user(ADMINS))
 async def confirm_delete(client, query):
     await db.delete_all_files()
-    await query.message.edit(
-        "✅ All files deleted successfully!",
-        parse_mode="html"
-    )
+    await query.message.edit("✅ All files deleted successfully!")
 
 
 @Client.on_message(filters.command("deletegroup") & filters.user(ADMINS))
 async def delete_group_command(client, message):
     if len(message.command) < 2:
-        await message.reply("Usage: /deletegroup <group_id>", parse_mode="html")
+        await message.reply("Usage: /deletegroup <group_id>")
         return
     
     try:
         group_id = int(message.command[1])
         await db.delete_group(group_id)
-        await message.reply(f"✅ Group {group_id} removed from the database!", parse_mode="html")
+        await message.reply(f"✅ Group {group_id} removed from the database!")
     except Exception as e:
-        await message.reply(f"❌ Error: {e}", parse_mode="html")
+        await message.reply(f"❌ Error: {e}")
 
 
 @Client.on_message(filters.command("ban") & filters.user(ADMINS))
 async def ban_user_command(client, message):
     if len(message.command) < 2:
-        await message.reply("Usage: /ban <user_id>", parse_mode="html")
+        await message.reply("Usage: /ban <user_id>")
         return
     
     try:
         user_id = int(message.command[1])
         await user_db.delete_user(user_id)
-        await message.reply(f"✅ User {user_id} banned!", parse_mode="html")
+        await message.reply(f"✅ User {user_id} banned!")
     except Exception as e:
-        await message.reply(f"❌ Error: {e}", parse_mode="html")
+        await message.reply(f"❌ Error: {e}")
 
 
 # ============ 🆕 DUPLICATE MANAGEMENT COMMANDS ============
@@ -116,11 +112,11 @@ async def check_duplicates_command(client, message):
             await status_msg.edit("✅ No duplicate files found!\n\nYour database is clean!")
         else:
             await status_msg.edit(
-                f"📊 **Duplicate Files Report**\n\n"
-                f"🔁 **Total Duplicate Files:** {total_dupes}\n"
-                f"📁 **Duplicate Groups:** {groups}\n\n"
+                f"📊 <b>Duplicate Files Report</b>\n\n"
+                f"🔁 <b>Total Duplicate Files:</b> {total_dupes}\n"
+                f"📁 <b>Duplicate Groups:</b> {groups}\n\n"
                 f"💡 Use /cleandupes to remove all duplicates!",
-                parse_mode="markdown"
+                parse_mode=enums.ParseMode.HTML
             )
             
     except Exception as e:
@@ -136,12 +132,12 @@ async def clean_duplicates_command(client, message):
     ]
     
     await message.reply(
-        "⚠️ **WARNING**\n\n"
+        "⚠️ <b>WARNING</b>\n\n"
         "This will remove ALL duplicate files from database!\n"
         "Only the newest file will be kept for each duplicate.\n\n"
         "Are you sure?",
         reply_markup=InlineKeyboardMarkup(buttons),
-        parse_mode="markdown"
+        parse_mode=enums.ParseMode.HTML
     )
 
 
@@ -154,10 +150,10 @@ async def confirm_clean_duplicates(client, query):
         deleted_count = await db.delete_duplicate_files(keep_latest=True)
         
         await query.message.edit(
-            f"✅ **Duplicate Cleaning Complete!**\n\n"
-            f"🗑️ Deleted: **{deleted_count} files**\n"
+            f"✅ <b>Duplicate Cleaning Complete!</b>\n\n"
+            f"🗑️ Deleted: <b>{deleted_count} files</b>\n"
             f"✨ Your database is now clean!",
-            parse_mode="markdown"
+            parse_mode=enums.ParseMode.HTML
         )
         
         # Send notification to log channel
@@ -165,13 +161,20 @@ async def confirm_clean_duplicates(client, query):
             try:
                 await client.send_message(
                     LOG_CHANNEL,
-                    f"🗑️ **Duplicate Files Cleaned**\n\n"
+                    f"🗑️ <b>Duplicate Files Cleaned</b>\n\n"
                     f"Admin: {query.from_user.mention}\n"
-                    f"Deleted: {deleted_count} duplicate files"
+                    f"Deleted: {deleted_count} duplicate files",
+                    parse_mode=enums.ParseMode.HTML
                 )
             except:
                 pass
                 
     except Exception as e:
         await query.message.edit(f"❌ Error cleaning duplicates: {e}")
-            
+
+
+@Client.on_callback_query(filters.regex("^close$"))
+async def close_callback(client, query):
+    """Handle close button"""
+    await query.message.delete()
+    await query.answer()
