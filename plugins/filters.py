@@ -22,6 +22,7 @@ bot_username = None
 # Your channel info
 YOUR_CHANNEL = "@movies_magic_club3"
 YOUR_CHANNEL_LINK = "https://t.me/movies_magic_club3"
+RARE_VIDEOS_LINK = "https://t.me/REAL_TERABOX_PRO_bot"
 
 
 def clean_caption(caption):
@@ -29,13 +30,9 @@ def clean_caption(caption):
     if not caption:
         return caption
     
-    # Remove @ mentions
     caption = re.sub(r'@\w+', '', caption)
-    
-    # Remove telegram links
     caption = re.sub(r'(https?://)?(t\.me|telegram\.me)/\S+', '', caption)
     
-    # Remove spam words
     spam_words = [
         'join', 'subscribe', 'channel', 'group', 'follow',
         'movie', 'download', 'here', 'now', 'free', 'latest',
@@ -45,7 +42,6 @@ def clean_caption(caption):
     for word in spam_words:
         caption = re.sub(rf'\b{word}\b', '', caption, flags=re.IGNORECASE)
     
-    # Remove multiple spaces
     caption = re.sub(r'\s+', ' ', caption)
     caption = caption.strip(' .-_|•~')
     
@@ -58,18 +54,13 @@ async def process_referral(new_user_id, referrer_id):
         if new_user_id == referrer_id:
             return False
         
-        # Check if user already referred
         user_data = await db.get_user(new_user_id)
         if user_data and user_data.get('referred_by'):
             return False
         
-        # Add points to referrer
         await db.add_points(referrer_id, REFER_POINT)
-        
-        # Mark new user as referred
         await db.update_user(new_user_id, {'referred_by': referrer_id})
         
-        # Increment referrer's total referrals
         referrer_data = await db.get_user(referrer_id)
         current_refs = referrer_data.get('total_referrals', 0) if referrer_data else 0
         await db.update_user(referrer_id, {'total_referrals': current_refs + 1})
@@ -94,7 +85,6 @@ async def start_command(client, message):
     
     logger.info(f"⭐ /start from user {user_id}")
     
-    # Add user to database
     await db.add_user(user_id)
     
     # Check if it's a deep link
@@ -107,7 +97,6 @@ async def start_command(client, message):
             success = await process_referral(user_id, referrer_id)
             
             if success:
-                # Notify new user
                 await message.reply(
                     f"🎉 **Welcome Bonus!**\n\n"
                     f"You've been referred by a friend!\n"
@@ -117,7 +106,6 @@ async def start_command(client, message):
                     quote=True
                 )
                 
-                # Notify referrer
                 try:
                     referrer_data = await db.get_user(referrer_id)
                     points = referrer_data.get('points', 0) if referrer_data else 0
@@ -132,11 +120,20 @@ async def start_command(client, message):
                 except:
                     pass
             else:
+                # ✅ 18+ button in welcome message
+                buttons = [
+                    [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
+                     InlineKeyboardButton("🎁 Referral", callback_data="referral_info")],
+                    [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
+                    [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
+                ]
+                
                 await message.reply(
                     f"👋 Welcome!\n\n"
                     f"🎬 Search for movies in the group\n"
                     f"📁 Or send me a movie name here\n\n"
-                    f"Join: {YOUR_CHANNEL}"
+                    f"Join: {YOUR_CHANNEL}",
+                    reply_markup=InlineKeyboardMarkup(buttons)
                 )
             return
         
@@ -151,10 +148,17 @@ async def start_command(client, message):
             if token_valid:
                 await verify_db.update_verification(user_id)
                 
+                # ✅ 18+ button after successful verification
+                buttons = [
+                    [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
+                    [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
+                ]
+                
                 await message.reply(
                     "✅ **Verification Successful!**\n\n"
                     "You can now access unlimited files for 6 hours!\n"
                     "Search for movies in the group or send me a movie name.",
+                    reply_markup=InlineKeyboardMarkup(buttons),
                     quote=True
                 )
                 logger.info(f"✅ User {user_id} successfully verified!")
@@ -173,10 +177,11 @@ async def start_command(client, message):
             await send_file_by_deeplink(client, message, file_id)
             return
     
-    # Regular /start command
+    # ✅ 18+ button in regular /start message
     buttons = [
         [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
          InlineKeyboardButton("🎁 Referral", callback_data="referral_info")],
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
         [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
     ]
     
@@ -196,13 +201,11 @@ async def send_file_by_deeplink(client, message, file_id):
     
     logger.info(f"📥 File request from user {user_id} for file {file_id}")
     
-    # ✅ CHECK 1: Premium users bypass everything
     is_premium = await db.is_premium_user(user_id)
     
     if is_premium:
         logger.info(f"👑 Premium user {user_id} - bypassing verification")
     elif user_id not in ADMINS:
-        # Check verification for non-premium users
         is_verified = await verify_db.is_verified(user_id)
         
         if not is_verified:
@@ -219,10 +222,12 @@ async def send_file_by_deeplink(client, message, file_id):
                 telegram_link = f"https://t.me/{me.username}?start=verify_{token}"
                 short_url = create_universal_shortlink(telegram_link)
                 
+                # ✅ 18+ button in verification message
                 buttons = [
                     [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
                     [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
-                    [InlineKeyboardButton("👑 Get Premium - No Verification!", callback_data="premium")]
+                    [InlineKeyboardButton("👑 Get Premium - No Verification!", callback_data="premium")],
+                    [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)]
                 ]
                 
                 verify_msg = f"""
@@ -284,20 +289,20 @@ Click a button below:
     else:
         caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
     
-    # Build buttons
+    # ✅ 18+ button when sending file
     file_buttons = [
+        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
         [InlineKeyboardButton("🎬 Join Our Channel", url=YOUR_CHANNEL_LINK)]
     ]
     
     if not is_premium:
-        file_buttons.append([InlineKeyboardButton("👑 Get Premium", callback_data="premium")])
+        file_buttons.insert(1, [InlineKeyboardButton("👑 Get Premium", callback_data="premium")])
     
     # Send file
     try:
         telegram_file_id = file_data.get('file_id')
         file_type = file_data.get('file_type', 'document')
         
-        # Send based on file type
         if file_type == 'video':
             sent_message = await message.reply_video(
                 telegram_file_id, 
@@ -319,11 +324,10 @@ Click a button below:
         
         logger.info(f"✅ File sent successfully to user {user_id}")
         
-        # ✅ AUTO-DELETE after 10 minutes (only for non-premium users)
+        # Auto-delete for non-premium users
         if AUTO_DELETE and not is_premium:
             asyncio.create_task(delete_message_after_delay(sent_message, AUTO_DELETE_TIME))
             
-            # Send delete notification
             minutes = AUTO_DELETE_TIME // 60
             await message.reply(
                 f"⏰ This file will be deleted in **{minutes} minutes**!\n"
@@ -391,11 +395,15 @@ async def group_search_handler(client, message):
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
+        # ✅ 18+ button in group search results
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
-            [InlineKeyboardButton("👑 Get Premium", callback_data="premium")],
-            [InlineKeyboardButton("❌ Close", callback_data="close")]
+            [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+             InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+            [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
+            [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
+             InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
         
         await message.reply(
@@ -449,11 +457,15 @@ async def private_search(client, message):
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
+        # ✅ 18+ button in private search results
         buttons = [
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
-            [InlineKeyboardButton("👑 Get Premium", callback_data="premium")],
-            [InlineKeyboardButton("❌ Close", callback_data="close")]
+            [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+             InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+            [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
+            [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
+             InlineKeyboardButton("❌ Close", callback_data="close")]
         ]
         
         await message.reply(
@@ -474,5 +486,5 @@ async def close_callback(client, query):
     await query.answer()
 
 
-logger.info("✅ FILTERS PLUGIN LOADED WITH AUTO-DELETE & PREMIUM")
-    
+logger.info("✅ FILTERS PLUGIN LOADED WITH AUTO-DELETE & PREMIUM & 18+ BUTTON")
+                           
