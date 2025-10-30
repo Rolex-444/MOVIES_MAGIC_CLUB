@@ -24,6 +24,7 @@ class Database:
             logger.error(f"Error creating indexes: {e}")
 
     # ============ FILE METHODS ============
+    
     async def add_file(self, file_data):
         """Add file to database"""
         try:
@@ -97,7 +98,107 @@ class Database:
             logger.error(f"Error deleting file by ID: {e}")
             return None
 
+    # ============ 🆕 DUPLICATE DETECTION METHODS ============
+    
+    async def find_duplicate_files(self, file_name, file_size):
+        """
+        🆕 Find files with same name and size
+        Returns list of matching files
+        """
+        try:
+            duplicates = self.col.find({
+                'file_name': file_name,
+                'file_size': file_size
+            })
+            
+            result = await duplicates.to_list(length=None)
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error finding duplicates: {e}")
+            return []
+
+    async def get_duplicate_count(self):
+        """
+        🆕 Get total number of duplicate files in database
+        Returns: (total_duplicate_files, number_of_duplicate_groups)
+        """
+        try:
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": {"name": "$file_name", "size": "$file_size"},
+                        "count": {"$sum": 1}
+                    }
+                },
+                {
+                    "$match": {
+                        "count": {"$gt": 1}
+                    }
+                }
+            ]
+            
+            duplicates = await self.col.aggregate(pipeline).to_list(length=None)
+            
+            total_duplicates = sum(item['count'] - 1 for item in duplicates)
+            
+            return total_duplicates, len(duplicates)
+            
+        except Exception as e:
+            logger.error(f"Error counting duplicates: {e}")
+            return 0, 0
+
+    async def delete_duplicate_files(self, keep_latest=True):
+        """
+        🆕 Delete all duplicate files
+        If keep_latest=True, keeps the newest file for each duplicate group
+        Returns number of files deleted
+        """
+        try:
+            pipeline = [
+                {
+                    "$group": {
+                        "_id": {"name": "$file_name", "size": "$file_size"},
+                        "files": {"$push": {"id": "$_id", "time": "$_id"}},
+                        "count": {"$sum": 1}
+                    }
+                },
+                {
+                    "$match": {
+                        "count": {"$gt": 1}
+                    }
+                }
+            ]
+            
+            duplicate_groups = await self.col.aggregate(pipeline).to_list(length=None)
+            
+            deleted_count = 0
+            
+            for group in duplicate_groups:
+                files = group['files']
+                
+                if keep_latest:
+                    # Sort by ID (newer files have larger ObjectId)
+                    files.sort(key=lambda x: x['id'], reverse=True)
+                    # Keep first (newest), delete rest
+                    to_delete = files[1:]
+                else:
+                    # Delete all
+                    to_delete = files
+                
+                for file in to_delete:
+                    await self.col.delete_one({'_id': file['id']})
+                    deleted_count += 1
+            
+            logger.info(f"✅ Deleted {deleted_count} duplicate files")
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error deleting duplicates: {e}")
+            return 0
+
     # ============ GROUP METHODS ============
+    
     async def add_group(self, group_id, group_name):
         """Add group to database"""
         await self.grp.update_one(
@@ -124,6 +225,7 @@ class Database:
         return await self.grp.count_documents({})
 
     # ============ USER METHODS ============
+    
     async def add_user(self, user_id):
         """Add user to database"""
         try:
@@ -134,11 +236,13 @@ class Database:
                 'premium_expire': 0,
                 'joined_at': int(time.time())
             }
+            
             await self.usr.update_one(
                 {'user_id': user_id},
                 {'$setOnInsert': user_data},
                 upsert=True
             )
+            
             return True
         except Exception as e:
             logger.error(f"Error adding user: {e}")
@@ -147,12 +251,26 @@ class Database:
     async def get_user(self, user_id):
         """Get user data"""
         return await self.usr.find_one({'user_id': user_id})
+    
+    async def update_user(self, user_id, update_data):
+        """🆕 Update user data with custom fields"""
+        try:
+            await self.usr.update_one(
+                {'user_id': user_id},
+                {'$set': update_data},
+                upsert=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error updating user: {e}")
+            return False
 
     async def total_users_count(self):
         """Count total users"""
         return await self.usr.count_documents({})
 
     # ============ PREMIUM METHODS ============
+    
     async def is_premium_user(self, user_id):
         """Check if user is premium"""
         try:
@@ -181,12 +299,14 @@ class Database:
                 {'$set': {'premium_expire': expire_time}},
                 upsert=True
             )
+            
             return True
         except Exception as e:
             logger.error(f"Error making premium: {e}")
             return False
 
     # ============ REFERRAL/POINTS METHODS ============
+    
     async def get_points(self, user_id):
         """Get user points"""
         try:
@@ -204,6 +324,7 @@ class Database:
                 {'$inc': {'points': points}},
                 upsert=True
             )
+            
             return True
         except Exception as e:
             logger.error(f"Error adding points: {e}")
@@ -216,6 +337,7 @@ class Database:
                 {'user_id': user_id},
                 {'$inc': {'points': -points}}
             )
+            
             return True
         except Exception as e:
             logger.error(f"Error deducting points: {e}")
@@ -238,8 +360,9 @@ class Database:
                 {'$inc': {'referral_count': 1}},
                 upsert=True
             )
+            
             return True
         except Exception as e:
             logger.error(f"Error incrementing referral: {e}")
             return False
-    
+                        
