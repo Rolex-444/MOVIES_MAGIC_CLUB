@@ -120,7 +120,6 @@ async def start_command(client, message):
                 except:
                     pass
             else:
-                # ✅ 18+ button in welcome message
                 buttons = [
                     [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
                      InlineKeyboardButton("🎁 Referral", callback_data="referral_info")],
@@ -148,7 +147,6 @@ async def start_command(client, message):
             if token_valid:
                 await verify_db.update_verification(user_id)
                 
-                # ✅ 18+ button after successful verification
                 buttons = [
                     [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
                     [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
@@ -177,7 +175,6 @@ async def start_command(client, message):
             await send_file_by_deeplink(client, message, file_id)
             return
     
-    # ✅ 18+ button in regular /start message
     buttons = [
         [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
          InlineKeyboardButton("🎁 Referral", callback_data="referral_info")],
@@ -222,7 +219,6 @@ async def send_file_by_deeplink(client, message, file_id):
                 telegram_link = f"https://t.me/{me.username}?start=verify_{token}"
                 short_url = create_universal_shortlink(telegram_link)
                 
-                # ✅ 18+ button in verification message
                 buttons = [
                     [InlineKeyboardButton("🔐 Verify Now", url=short_url)],
                     [InlineKeyboardButton("📚 How to Verify?", url=VERIFY_TUTORIAL)],
@@ -289,7 +285,6 @@ Click a button below:
     else:
         caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
     
-    # ✅ 18+ button when sending file
     file_buttons = [
         [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
         [InlineKeyboardButton("🎬 Join Our Channel", url=YOUR_CHANNEL_LINK)]
@@ -349,11 +344,10 @@ async def delete_message_after_delay(message, delay_seconds):
         logger.info(f"🗑️ Auto-deleted message {message.id}")
     except Exception as e:
         logger.error(f"Error deleting message: {e}")
-
-
+    # ✅ UPDATED: Group search with PAGINATION
 @Client.on_message(filters.text & filters.group, group=1)
 async def group_search_handler(client, message):
-    """Handle movie search in GROUPS"""
+    """Handle movie search in GROUPS with pagination"""
     search = message.text.strip()
     
     if len(search) < 3 or search.startswith("/"):
@@ -375,9 +369,17 @@ async def group_search_handler(client, message):
             me = await client.get_me()
             bot_username = me.username
         
-        file_text = f"📁 Found {total} files for `{search}`\n\n"
+        # ✅ Pagination - Show first 10 files
+        page = 0
+        per_page = 10
+        start = page * per_page
+        end = start + per_page
+        page_files = files[start:end]
         
-        for file in files[:10]:
+        file_text = f"📁 Found {total} files for `{search}`\n"
+        file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
+        
+        for file in page_files:
             try:
                 file_id = str(file.get('_id', ''))
                 original_caption = file.get('caption', '')
@@ -395,8 +397,21 @@ async def group_search_handler(client, message):
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
-        # ✅ 18+ button in group search results
-        buttons = [
+        # ✅ Build buttons with pagination
+        buttons = []
+        
+        # Add navigation row if more than 10 files
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
+        if end < total:
+            nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
+        
+        if nav_buttons:
+            buttons.append(nav_buttons)
+        
+        # Filter buttons
+        buttons.extend([
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
             [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
@@ -404,7 +419,7 @@ async def group_search_handler(client, message):
             [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
             [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
              InlineKeyboardButton("❌ Close", callback_data="close")]
-        ]
+        ])
         
         await message.reply(
             file_text,
@@ -419,9 +434,10 @@ async def group_search_handler(client, message):
         logger.error(f"❌ Error in group_search: {e}", exc_info=True)
 
 
+# ✅ UPDATED: Private search with PAGINATION
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "premium", "referral"]))
 async def private_search(client, message):
-    """Handle movie search in PRIVATE chat"""
+    """Handle movie search in PRIVATE chat with pagination"""
     search = message.text.strip()
     
     logger.info(f"🔍 PRIVATE SEARCH: '{search}'")
@@ -438,9 +454,17 @@ async def private_search(client, message):
             me = await client.get_me()
             bot_username = me.username
         
-        file_text = f"📁 Found {total} files for `{search}`\n\n"
+        # ✅ Pagination - Show first 10 files
+        page = 0
+        per_page = 10
+        start = page * per_page
+        end = start + per_page
+        page_files = files[start:end]
         
-        for file in files[:10]:
+        file_text = f"📁 Found {total} files for `{search}`\n"
+        file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
+        
+        for file in page_files:
             try:
                 file_id = str(file.get('_id', ''))
                 original_caption = file.get('caption', '')
@@ -457,8 +481,21 @@ async def private_search(client, message):
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
-        # ✅ 18+ button in private search results
-        buttons = [
+        # ✅ Build buttons with pagination
+        buttons = []
+        
+        # Add navigation row if more than 10 files
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
+        if end < total:
+            nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
+        
+        if nav_buttons:
+            buttons.append(nav_buttons)
+        
+        # Filter buttons
+        buttons.extend([
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
             [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
@@ -466,7 +503,7 @@ async def private_search(client, message):
             [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
             [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
              InlineKeyboardButton("❌ Close", callback_data="close")]
-        ]
+        ])
         
         await message.reply(
             file_text, 
@@ -479,6 +516,87 @@ async def private_search(client, message):
         logger.error(f"❌ Error in private_search: {e}", exc_info=True)
 
 
+# ✅ NEW: Pagination callback handler
+@Client.on_callback_query(filters.regex(r"^page_"))
+async def pagination_handler(client, query):
+    """Handle pagination - next/previous pages"""
+    try:
+        data = query.data.split("#")
+        page_data = data[0]
+        search = data[1]
+        
+        page = int(page_data.replace("page_", ""))
+        
+        # Search files again
+        files, total = await db.search_files(search)
+        
+        global bot_username
+        if not bot_username:
+            me = await client.get_me()
+            bot_username = me.username
+        
+        # Paginate
+        per_page = 10
+        start = page * per_page
+        end = start + per_page
+        page_files = files[start:end]
+        
+        file_text = f"📁 Found {total} files for `{search}`\n"
+        file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
+        
+        for file in page_files:
+            try:
+                file_id = str(file.get('_id', ''))
+                original_caption = file.get('caption', '')
+                file_name = file.get('file_name', 'Unknown')
+                display_name = original_caption if original_caption else file_name
+                cleaned_name = clean_caption(display_name)
+                file_size = get_size(file.get('file_size', 0))
+                
+                deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
+                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                file_text += f"{clickable_text}\n\n"
+            except Exception as e:
+                logger.error(f"Error: {e}")
+        
+        file_text += f"🎬 Join: {YOUR_CHANNEL}"
+        
+        # Build buttons
+        buttons = []
+        
+        nav_buttons = []
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
+        if end < total:
+            nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
+        
+        if nav_buttons:
+            buttons.append(nav_buttons)
+        
+        buttons.extend([
+            [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
+             InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
+            [InlineKeyboardButton("📺 Season", callback_data=f"season#{search}"),
+             InlineKeyboardButton("📋 Episode", callback_data=f"episode#{search}")],
+            [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
+            [InlineKeyboardButton("👑 Get Premium", callback_data="premium"),
+             InlineKeyboardButton("❌ Close", callback_data="close")]
+        ])
+        
+        await query.message.edit_text(
+            file_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+        
+        await query.answer(f"📄 Page {page+1}")
+        
+    except Exception as e:
+        logger.error(f"Pagination error: {e}")
+        await query.answer("❌ Error loading page", show_alert=True)
+
+
 @Client.on_callback_query(filters.regex("^close$"))
 async def close_callback(client, query):
     """Handle close button"""
@@ -486,5 +604,5 @@ async def close_callback(client, query):
     await query.answer()
 
 
-logger.info("✅ FILTERS PLUGIN LOADED WITH AUTO-DELETE & PREMIUM & 18+ BUTTON")
-                           
+logger.info("✅ FILTERS PLUGIN LOADED WITH PAGINATION, AUTO-DELETE & PREMIUM & 18+ BUTTON")
+    
