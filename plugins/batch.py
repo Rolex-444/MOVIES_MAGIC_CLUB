@@ -3,6 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from info import ADMINS, BATCH_FILE_CAPTION, CHANNELS
 import asyncio
+from pyrogram import enums
 
 db = Database()
 
@@ -11,7 +12,7 @@ async def batch_command(client, message):
     if len(message.command) < 3:
         await message.reply(
             "Usage: /batch <first_message_id> <last_message_id>\n\nExample: /batch 100 150",
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML",
             disable_web_page_preview=True
         )
         return
@@ -25,11 +26,11 @@ async def batch_command(client, message):
         link = f"https://t.me/{client.username}?start=batch_{batch_id}"
         await message.reply(
             f"✅ <b><i>Batch Link Created!</i></b>\n\n<b>Total Files:</b> {last_id - first_id + 1}\n<b>Link:</b> <code>{link}</code>\n\nShare this link with your users!\n\nJoin: @movies_magic_club3",
-            parse_mode="html",
+            parse_mode=enums.ParseMode.HTML",
             disable_web_page_preview=True
         )
     except Exception as e:
-        await message.reply(f"❌ <b><i>Error:</i></b> {e}", parse_mode="html")
+        await message.reply(f"❌ <b><i>Error:</i></b> {e}", parse_mode=enums.ParseMode.HTML)
 
 async def handle_batch(client, message, batch_id):
     try:
@@ -50,8 +51,8 @@ async def handle_batch(client, message, batch_id):
         await status.delete()
         await message.reply(
             f"✅ <b><i>Batch Completed!</i></b>\n\n📁 Files sent: {sent}\n\nJoin: @movies_magic_club3",
-            parse_mode="html"
+            parse_mode=enums.ParseMode.HTML
         )
     except Exception as e:
-        await message.reply(f"❌ <b><i>Error:</i></b> {e}", parse_mode="html")
+        await message.reply(f"❌ <b><i>Error:</i></b> {e}", parse_mode=enums.ParseMode.HTML)
                     
