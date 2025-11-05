@@ -1,4 +1,4 @@
-from pyrogram import Client, filters
+from pyrogram import Client, filters, enums
 from database.database import Database
 from bson import ObjectId
 from utils.file_properties import get_size
@@ -54,7 +54,7 @@ async def fast_download(client, query):
         
         await query.message.reply_text(
             message_text,
-            parse_mode="markdown",
+            parse_mode=enums.ParseMode.MARKDOWN,
             disable_web_page_preview=False
         )
         
@@ -134,7 +134,7 @@ Click link above and start playing
         
         await query.message.reply_text(
             message_text,
-            parse_mode="markdown",
+            parse_mode=enums.ParseMode.MARKDOWN,
             disable_web_page_preview=False
         )
         
@@ -146,4 +146,4 @@ Click link above and start playing
         await query.answer("❌ Error generating stream!", show_alert=True)
 
 logger.info("✅ STREAM CALLBACKS LOADED - FAST DOWNLOAD & WATCH ONLINE!")
-                       
+        
