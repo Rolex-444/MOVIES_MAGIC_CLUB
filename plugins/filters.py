@@ -37,7 +37,6 @@ def clean_caption(caption):
         'join', 'subscribe', 'channel', 'group', 'follow',
         'movie', 'download', 'here', 'now', 'free', 'latest',
         '👉', '⚡', '🎬', '📢', '▶️', '🔥', '✅'
-    ]
     
     for word in spam_words:
         caption = re.sub(rf'\b{word}\b', '', caption, flags=re.IGNORECASE)
