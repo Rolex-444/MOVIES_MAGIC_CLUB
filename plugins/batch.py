@@ -29,7 +29,10 @@ async def batch_command(client, message):
             return
         
         batch_id = f"{first_id}_{last_id}"
-        link = f"https://t.me/{client.username}?start=batch_{batch_id}"
+        
+        # ✅ FIX: Get bot username correctly
+        me = await client.get_me()
+        link = f"https://t.me/{me.username}?start=batch_{batch_id}"
         
         await message.reply(
             f"✅ Batch Link Created!\n\n"
@@ -85,5 +88,5 @@ async def handle_batch(client, message, batch_id):
         await message.reply(
             f"❌ Error: {e}",
             parse_mode=enums.ParseMode.MARKDOWN
-        )
-        
+                      )
+                                                    
