@@ -365,4 +365,32 @@ class Database:
         except Exception as e:
             logger.error(f"Error incrementing referral: {e}")
             return False
-                        
+
+# ============ FILE STREAMING METHODS ============
+
+async def save_stream_link(self, file_hash, message_id, bin_channel_id):
+    """Save streaming link hash to database"""
+    try:
+        await self.usr.update_one(
+            {'_id': file_hash},
+            {'$set': {
+                'message_id': message_id,
+                'bin_channel_id': bin_channel_id,
+                'created_at': int(time.time())
+            }},
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        logger.error(f"Error saving stream link: {e}")
+        return False
+
+async def get_stream_file(self, file_hash):
+    """Get file from stream database by hash"""
+    try:
+        stream_col = self.db['stream_links']
+        file_data = await stream_col.find_one({'_id': file_hash})
+        return file_data
+    except Exception as e:
+        logger.error(f"Error getting stream file: {e}")
+        return None
