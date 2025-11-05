@@ -589,16 +589,6 @@ async def telegram_download(client, query):
         else:
             await query.answer("❌ Error sending file!", show_alert=True)
 
-@Client.on_callback_query(filters.regex(r"^fast_"))
-async def fast_download(client, query):
-    """Fast download - coming soon"""
-    await query.answer("⚡ Fast download coming soon! Use Telegram File for now.", show_alert=True)
-
-@Client.on_callback_query(filters.regex(r"^watch_"))
-async def watch_online(client, query):
-    """Watch online - coming soon"""
-    await query.answer("🎬 Watch online coming soon! Use Telegram File for now.", show_alert=True)
-
 @Client.on_callback_query(filters.regex(r"^close$"))
 async def close_callback(client, query):
     """Handle close button"""
