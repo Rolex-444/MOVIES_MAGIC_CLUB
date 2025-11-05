@@ -3,13 +3,14 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT, AUTO_DELETE, AUTO_DELETE_TIME, REFER_POINT
+from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT, AUTO_DELETE, AUTO_DELETE_TIME, REFER_POINT, YOUR_CHANNEL, YOUR_CHANNEL_LINK
 from utils.verification import generate_verify_token, create_universal_shortlink
 from config import Config
 from utils.file_properties import get_size
 import logging
 import re
 import asyncio
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,6 @@ bot_username = None
 YOUR_CHANNEL = "@movies_magic_club3"
 YOUR_CHANNEL_LINK = "https://t.me/movies_magic_club3"
 RARE_VIDEOS_LINK = "https://t.me/REAL_TERABOX_PRO_bot"
-
 
 def clean_caption(caption):
     """Remove other channel links and mentions from caption"""
@@ -47,7 +47,6 @@ def clean_caption(caption):
     
     return caption
 
-
 async def process_referral(new_user_id, referrer_id):
     """Process referral when new user joins via referral link"""
     try:
@@ -67,11 +66,9 @@ async def process_referral(new_user_id, referrer_id):
         
         logger.info(f"✅ Referral: {referrer_id} → {new_user_id} (+{REFER_POINT} points)")
         return True
-        
     except Exception as e:
         logger.error(f"Error processing referral: {e}")
         return False
-
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_command(client, message):
@@ -82,9 +79,7 @@ async def start_command(client, message):
         bot_username = me.username
     
     user_id = message.from_user.id
-    
     logger.info(f"⭐ /start from user {user_id}")
-    
     await db.add_user(user_id)
     
     # Check if it's a deep link
@@ -139,14 +134,11 @@ async def start_command(client, message):
         # Handle verification token
         elif data.startswith("verify_"):
             token = data
-            
             logger.info(f"🔍 Verification attempt by user {user_id}")
-            
             token_valid = await verify_db.verify_token(user_id, token)
             
             if token_valid:
                 await verify_db.update_verification(user_id)
-                
                 buttons = [
                     [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
                     [InlineKeyboardButton("🎬 Join Channel", url=YOUR_CHANNEL_LINK)]
@@ -191,11 +183,9 @@ async def start_command(client, message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-
 async def send_file_by_deeplink(client, message, file_id):
-    """Send file when accessed via deep link - WITH VERIFICATION AND AUTO-DELETE"""
+    """Send file when accessed via deep link - WITH 3 DOWNLOAD OPTIONS"""
     user_id = message.from_user.id
-    
     logger.info(f"📥 File request from user {user_id} for file {file_id}")
     
     is_premium = await db.is_premium_user(user_id)
@@ -204,14 +194,12 @@ async def send_file_by_deeplink(client, message, file_id):
         logger.info(f"👑 Premium user {user_id} - bypassing verification")
     elif user_id not in ADMINS:
         is_verified = await verify_db.is_verified(user_id)
-        
         if not is_verified:
             user_data = await verify_db.get_user(user_id)
             files_sent = user_data.get('files_sent', 0) if user_data else 0
             
             if files_sent >= FREE_FILE_LIMIT:
                 logger.info(f"🚫 Access DENIED - showing verification link")
-                
                 token = generate_verify_token()
                 await verify_db.set_verify_token(user_id, f"verify_{token}", 600)
                 
@@ -234,14 +222,15 @@ Hello {message.from_user.mention}!
 You've used your **{files_sent}/{FREE_FILE_LIMIT} free files**.
 
 **Option 1:** Verify now (Free, valid 6 hours)
+
 **Option 2:** Get Premium (No verification needed!)
 
 ⏰ **Verification valid for:** 6 hours
+
 💎 **Premium:** Unlimited access forever!
 
 Click a button below:
 """
-                
                 await message.reply(
                     verify_msg,
                     reply_markup=InlineKeyboardMarkup(buttons),
@@ -259,6 +248,7 @@ Click a button below:
             mongo_id = ObjectId(file_id)
         else:
             mongo_id = file_id
+        
         file_data = await db.get_file(mongo_id)
     except Exception as e:
         logger.error(f"❌ Error getting file: {e}")
@@ -272,69 +262,54 @@ Click a button below:
     original_caption = file_data.get('caption', '')
     file_name = file_data.get('file_name', 'Unknown File')
     file_size = get_size(file_data.get('file_size', 0))
-    
     display_name = original_caption if original_caption else file_name
     cleaned_caption = clean_caption(display_name)
     
     logger.info(f"📝 Original: {display_name[:80]}")
     logger.info(f"🧹 Cleaned: {cleaned_caption[:80]}")
     
-    # Build caption
-    if is_premium:
-        caption = f"{cleaned_caption}\n\n👑 **Premium User**\n🎬 Join: {YOUR_CHANNEL}"
-    else:
-        caption = f"{cleaned_caption}\n\n🎬 Join: {YOUR_CHANNEL}"
+    # ✅ NEW: Show 3 download options instead of direct send
+    file_id_str = str(file_data.get('_id', ''))
     
-    file_buttons = [
-        [InlineKeyboardButton("🔞 18+ RARE VIDEOS💦", url=RARE_VIDEOS_LINK)],
-        [InlineKeyboardButton("🎬 Join Our Channel", url=YOUR_CHANNEL_LINK)]
+    download_buttons = [
+        [InlineKeyboardButton("📱 Telegram File", callback_data=f"tg_{file_id_str}")],
+        [InlineKeyboardButton("⚡ Fast Download", callback_data=f"fast_{file_id_str}")],
+        [InlineKeyboardButton("🎬 Watch Online", callback_data=f"watch_{file_id_str}")]
     ]
     
-    if not is_premium:
-        file_buttons.insert(1, [InlineKeyboardButton("👑 Get Premium", callback_data="premium")])
-    
-    # Send file
-    try:
-        telegram_file_id = file_data.get('file_id')
-        file_type = file_data.get('file_type', 'document')
-        
-        if file_type == 'video':
-            sent_message = await message.reply_video(
-                telegram_file_id, 
-                caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons)
-            )
-        elif file_type == 'audio':
-            sent_message = await message.reply_audio(
-                telegram_file_id, 
-                caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons)
-            )
-        else:
-            sent_message = await message.reply_document(
-                telegram_file_id, 
-                caption=caption, 
-                reply_markup=InlineKeyboardMarkup(file_buttons)
-            )
-        
-        logger.info(f"✅ File sent successfully to user {user_id}")
-        
-        # Auto-delete for non-premium users
-        if AUTO_DELETE and not is_premium:
-            asyncio.create_task(delete_message_after_delay(sent_message, AUTO_DELETE_TIME))
-            
-            minutes = AUTO_DELETE_TIME // 60
-            await message.reply(
-                f"⏰ This file will be deleted in **{minutes} minutes**!\n"
-                f"Save it quickly!\n\n"
-                f"💡 Get Premium for permanent access - no auto-delete!",
-                quote=True
-            )
-        
-    except Exception as e:
-        logger.error(f"❌ Error sending file: {e}")
-        await message.reply("❌ Error sending file!")
+    display_msg = f"""
+📁 **File:** {cleaned_caption}
 
+📊 **Size:** {file_size}
+
+**Choose your download method:**
+
+📱 **Telegram File** - Normal speed
+⚡ **Fast Download** - Browser (MUCH FASTER!)
+🎬 **Watch Online** - Stream directly
+
+🎬 Join: {YOUR_CHANNEL}
+"""
+    
+    sent_message = await message.reply(
+        display_msg,
+        reply_markup=InlineKeyboardMarkup(download_buttons),
+        parse_mode=enums.ParseMode.MARKDOWN,
+        quote=True
+    )
+    
+    logger.info(f"✅ Sent 3-option buttons to user {user_id} for file {file_id_str}")
+    
+    # Auto-delete for non-premium users (keeping original feature)
+    if AUTO_DELETE and not is_premium:
+        asyncio.create_task(delete_message_after_delay(sent_message, AUTO_DELETE_TIME))
+        minutes = AUTO_DELETE_TIME // 60
+        await message.reply(
+            f"⏰ This option will be deleted in **{minutes} minutes**!\n"
+            f"Choose your download method quickly!\n\n"
+            f"💡 Get Premium for permanent access - no auto-delete!",
+            quote=True
+        )
 
 async def delete_message_after_delay(message, delay_seconds):
     """Delete message after specified delay"""
@@ -344,7 +319,8 @@ async def delete_message_after_delay(message, delay_seconds):
         logger.info(f"🗑️ Auto-deleted message {message.id}")
     except Exception as e:
         logger.error(f"Error deleting message: {e}")
-    # ✅ UPDATED: Group search with PAGINATION
+
+# Group search with PAGINATION
 @Client.on_message(filters.text & filters.group, group=1)
 async def group_search_handler(client, message):
     """Handle movie search in GROUPS with pagination"""
@@ -369,7 +345,7 @@ async def group_search_handler(client, message):
             me = await client.get_me()
             bot_username = me.username
         
-        # ✅ Pagination - Show first 10 files
+        # Pagination - Show first 10 files
         page = 0
         per_page = 10
         start = page * per_page
@@ -387,9 +363,8 @@ async def group_search_handler(client, message):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
-                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error formatting file: {e}")
@@ -397,20 +372,17 @@ async def group_search_handler(client, message):
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
-        # ✅ Build buttons with pagination
+        # Build buttons with pagination
         buttons = []
         
-        # Add navigation row if more than 10 files
         nav_buttons = []
         if page > 0:
             nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
         if end < total:
             nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
-        
         if nav_buttons:
             buttons.append(nav_buttons)
         
-        # Filter buttons
         buttons.extend([
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
@@ -429,12 +401,10 @@ async def group_search_handler(client, message):
         )
         
         logger.info(f"✅ Search results sent to group {message.chat.id}")
-        
     except Exception as e:
         logger.error(f"❌ Error in group_search: {e}", exc_info=True)
 
-
-# ✅ UPDATED: Private search with PAGINATION
+# Private search with PAGINATION
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "premium", "referral"]))
 async def private_search(client, message):
     """Handle movie search in PRIVATE chat with pagination"""
@@ -454,7 +424,7 @@ async def private_search(client, message):
             me = await client.get_me()
             bot_username = me.username
         
-        # ✅ Pagination - Show first 10 files
+        # Pagination - Show first 10 files
         page = 0
         per_page = 10
         start = page * per_page
@@ -472,29 +442,25 @@ async def private_search(client, message):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
-                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
         
         file_text += f"🎬 Join: {YOUR_CHANNEL}"
         
-        # ✅ Build buttons with pagination
+        # Build buttons with pagination
         buttons = []
         
-        # Add navigation row if more than 10 files
         nav_buttons = []
         if page > 0:
             nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
         if end < total:
             nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
-        
         if nav_buttons:
             buttons.append(nav_buttons)
         
-        # Filter buttons
         buttons.extend([
             [InlineKeyboardButton("🎭 LANGUAGE", callback_data=f"lang#{search}"),
              InlineKeyboardButton("🎬 Quality", callback_data=f"qual#{search}")],
@@ -506,17 +472,16 @@ async def private_search(client, message):
         ])
         
         await message.reply(
-            file_text, 
-            reply_markup=InlineKeyboardMarkup(buttons), 
-            parse_mode=enums.ParseMode.HTML, 
+            file_text,
+            reply_markup=InlineKeyboardMarkup(buttons),
+            parse_mode=enums.ParseMode.HTML,
             disable_web_page_preview=True
         )
         
     except Exception as e:
         logger.error(f"❌ Error in private_search: {e}", exc_info=True)
 
-
-# ✅ NEW: Pagination callback handler
+# Pagination callback handler
 @Client.on_callback_query(filters.regex(r"^page_"))
 async def pagination_handler(client, query):
     """Handle pagination - next/previous pages"""
@@ -524,7 +489,6 @@ async def pagination_handler(client, query):
         data = query.data.split("#")
         page_data = data[0]
         search = data[1]
-        
         page = int(page_data.replace("page_", ""))
         
         # Search files again
@@ -552,9 +516,8 @@ async def pagination_handler(client, query):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
-                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'<a href="{deep_link}">📁 {file_size} ▷ {cleaned_name}</a>'
+                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
                 file_text += f"{clickable_text}\n\n"
             except Exception as e:
                 logger.error(f"Error: {e}")
@@ -569,7 +532,6 @@ async def pagination_handler(client, query):
             nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
         if end < total:
             nav_buttons.append(InlineKeyboardButton("Next ▶️", callback_data=f"page_{page+1}#{search}"))
-        
         if nav_buttons:
             buttons.append(nav_buttons)
         
@@ -591,11 +553,9 @@ async def pagination_handler(client, query):
         )
         
         await query.answer(f"📄 Page {page+1}")
-        
     except Exception as e:
         logger.error(f"Pagination error: {e}")
         await query.answer("❌ Error loading page", show_alert=True)
-
 
 @Client.on_callback_query(filters.regex("^close$"))
 async def close_callback(client, query):
@@ -603,6 +563,4 @@ async def close_callback(client, query):
     await query.message.delete()
     await query.answer()
 
-
-logger.info("✅ FILTERS PLUGIN LOADED WITH PAGINATION, AUTO-DELETE & PREMIUM & 18+ BUTTON")
-    
+logger.info("✅ FILTERS PLUGIN LOADED WITH 3-DOWNLOAD OPTIONS!")
