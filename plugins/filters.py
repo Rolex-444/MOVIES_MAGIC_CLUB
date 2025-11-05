@@ -10,7 +10,6 @@ from utils.file_properties import get_size
 import logging
 import re
 import asyncio
-import base64
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +37,7 @@ def clean_caption(caption):
         'movie', 'download', 'here', 'now', 'free', 'latest',
         '👉', '⚡', '🎬', '📢', '▶️', '🔥', '✅'
     ]
+    
     for word in spam_words:
         caption = re.sub(rf'\b{word}\b', '', caption, flags=re.IGNORECASE)
     
@@ -318,8 +318,7 @@ async def delete_message_after_delay(message, delay_seconds):
         logger.info(f"🗑️ Auto-deleted message {message.id}")
     except Exception as e:
         logger.error(f"Error deleting message: {e}")
-
-# Group search with PAGINATION
+    # Group search with PAGINATION and CLICKABLE BUTTONS
 @Client.on_message(filters.text & filters.group, group=1)
 async def group_search_handler(client, message):
     """Handle movie search in GROUPS with pagination"""
@@ -354,6 +353,8 @@ async def group_search_handler(client, message):
         file_text = f"📁 Found {total} files for `{search}`\n"
         file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
         
+        # ✅ CHANGE 1: Build buttons for each file (CLICKABLE!)
+        file_buttons = []
         for file in page_files:
             try:
                 file_id = str(file.get('_id', ''))
@@ -362,18 +363,26 @@ async def group_search_handler(client, message):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
+                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
-                file_text += f"{clickable_text}\n\n"
+                
+                # ✅ Add button for this file
+                btn_text = f"📁 {file_size} ▷ {cleaned_name[:40]}"
+                file_buttons.append([InlineKeyboardButton(btn_text, url=deep_link)])
+                
+                # Also add text version
+                file_text += f"📁 {file_size} • {cleaned_name}\n"
+                
             except Exception as e:
                 logger.error(f"Error formatting file: {e}")
                 continue
         
-        file_text += f"🎬 Join: {YOUR_CHANNEL}"
+        file_text += f"\n🎬 Join: {YOUR_CHANNEL}"
         
-        # Build buttons with pagination
-        buttons = []
+        # ✅ CHANGE 2: Build all buttons together (file buttons FIRST)
+        buttons = file_buttons.copy()  # Add file buttons FIRST
         
+        # Add pagination buttons
         nav_buttons = []
         if page > 0:
             nav_buttons.append(InlineKeyboardButton("◀️ Previous", callback_data=f"page_{page-1}#{search}"))
@@ -399,11 +408,11 @@ async def group_search_handler(client, message):
             disable_web_page_preview=True
         )
         
-        logger.info(f"✅ Search results sent to group {message.chat.id}")
+        logger.info(f"✅ Search results sent to group {message.chat.id} with {len(file_buttons)} clickable file buttons")
     except Exception as e:
         logger.error(f"❌ Error in group_search: {e}", exc_info=True)
 
-# Private search with PAGINATION
+# Private search with clickable buttons  
 @Client.on_message(filters.text & filters.private & ~filters.command(["start", "help", "premium", "referral"]))
 async def private_search(client, message):
     """Handle movie search in PRIVATE chat with pagination"""
@@ -433,6 +442,8 @@ async def private_search(client, message):
         file_text = f"📁 Found {total} files for `{search}`\n"
         file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
         
+        # ✅ CHANGE 1: Build buttons for each file (CLICKABLE!)
+        file_buttons = []
         for file in page_files:
             try:
                 file_id = str(file.get('_id', ''))
@@ -441,16 +452,22 @@ async def private_search(client, message):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
+                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
-                file_text += f"{clickable_text}\n\n"
+                
+                # ✅ Add button for this file
+                btn_text = f"📁 {file_size} ▷ {cleaned_name[:40]}"
+                file_buttons.append([InlineKeyboardButton(btn_text, url=deep_link)])
+                
+                file_text += f"📁 {file_size} • {cleaned_name}\n"
+                
             except Exception as e:
                 logger.error(f"Error: {e}")
         
-        file_text += f"🎬 Join: {YOUR_CHANNEL}"
+        file_text += f"\n🎬 Join: {YOUR_CHANNEL}"
         
-        # Build buttons with pagination
-        buttons = []
+        # ✅ CHANGE 2: Build all buttons together (file buttons FIRST)
+        buttons = file_buttons.copy()  # Add file buttons FIRST
         
         nav_buttons = []
         if page > 0:
@@ -507,6 +524,8 @@ async def pagination_handler(client, query):
         file_text = f"📁 Found {total} files for `{search}`\n"
         file_text += f"📄 Showing {start+1}-{min(end, total)} of {total}\n\n"
         
+        # ✅ Build buttons for each file
+        file_buttons = []
         for file in page_files:
             try:
                 file_id = str(file.get('_id', ''))
@@ -515,16 +534,21 @@ async def pagination_handler(client, query):
                 display_name = original_caption if original_caption else file_name
                 cleaned_name = clean_caption(display_name)
                 file_size = get_size(file.get('file_size', 0))
+                
                 deep_link = f"https://t.me/{bot_username}?start=file_{file_id}"
-                clickable_text = f'📁 {file_size} ▷ {cleaned_name}'
-                file_text += f"{clickable_text}\n\n"
+                
+                btn_text = f"📁 {file_size} ▷ {cleaned_name[:40]}"
+                file_buttons.append([InlineKeyboardButton(btn_text, url=deep_link)])
+                
+                file_text += f"📁 {file_size} • {cleaned_name}\n"
+                
             except Exception as e:
                 logger.error(f"Error: {e}")
         
-        file_text += f"🎬 Join: {YOUR_CHANNEL}"
+        file_text += f"\n🎬 Join: {YOUR_CHANNEL}"
         
-        # Build buttons
-        buttons = []
+        # ✅ Build buttons with file buttons FIRST
+        buttons = file_buttons.copy()
         
         nav_buttons = []
         if page > 0:
@@ -596,25 +620,13 @@ async def telegram_download(client, query):
 
 @Client.on_callback_query(filters.regex(r"^fast_"))
 async def fast_download(client, query):
-    """Fast download - for now, send message (will add later)"""
-    file_id = query.data.replace("fast_", "")
-    user_id = query.from_user.id
-    
-    logger.info(f"⚡ Fast download request from user {user_id}")
-    
+    """Fast download - coming soon"""
     await query.answer("⚡ Fast download coming soon! Use Telegram File for now.", show_alert=True)
 
 @Client.on_callback_query(filters.regex(r"^watch_"))
 async def watch_online(client, query):
-    """Watch online - for now, send message (will add later)"""
-    file_id = query.data.replace("watch_", "")
-    user_id = query.from_user.id
-    
-    logger.info(f"🎬 Watch online request from user {user_id}")
-    
+    """Watch online - coming soon"""
     await query.answer("🎬 Watch online coming soon! Use Telegram File for now.", show_alert=True)
-    
-# ✅ Make sure your file ends with these 3 callback handlers:
 
 @Client.on_callback_query(filters.regex(r"^close$"))
 async def close_callback(client, query):
@@ -622,5 +634,5 @@ async def close_callback(client, query):
     await query.message.delete()
     await query.answer()
 
-logger.info("✅ FILTERS PLUGIN LOADED WITH 3-DOWNLOAD OPTIONS!")
-
+logger.info("✅ FILTERS PLUGIN LOADED WITH 3-DOWNLOAD OPTIONS AND CLICKABLE FILE BUTTONS!")
+                                     
