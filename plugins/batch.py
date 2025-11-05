@@ -12,7 +12,7 @@ async def batch_command(client, message):
     if len(message.command) < 3:
         await message.reply(
             "Usage: /batch <first_message_id> <last_message_id>\n\nExample: /batch 100 150",
-            parse_mode=enums.ParseMode.HTML",
+            parse_mode=enums.ParseMode.HTML
             disable_web_page_preview=True
         )
         return
@@ -26,7 +26,7 @@ async def batch_command(client, message):
         link = f"https://t.me/{client.username}?start=batch_{batch_id}"
         await message.reply(
             f"✅ <b><i>Batch Link Created!</i></b>\n\n<b>Total Files:</b> {last_id - first_id + 1}\n<b>Link:</b> <code>{link}</code>\n\nShare this link with your users!\n\nJoin: @movies_magic_club3",
-            parse_mode=enums.ParseMode.HTML",
+            parse_mode=enums.ParseMode.HTML
             disable_web_page_preview=True
         )
     except Exception as e:
