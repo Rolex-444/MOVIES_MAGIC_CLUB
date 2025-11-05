@@ -2,9 +2,8 @@ from pyrogram import Client, filters
 from database.database import Database
 from bson import ObjectId
 from utils.file_properties import get_size
-from info import YOUR_CHANNEL
+from info import YOUR_CHANNEL, YOUR_CHANNEL_LINK, RARE_VIDEOS_LINK
 import logging
-import httpx
 
 logger = logging.getLogger(__name__)
 db = Database()
@@ -66,7 +65,7 @@ async def fast_download(client, query):
         logger.error(f"Error: {e}")
         await query.answer("❌ Error!", show_alert=True)
 
-# ✅ WATCH ONLINE - Generate streaming link (BEST METHOD)
+# ✅ WATCH ONLINE - Generate streaming link
 @Client.on_callback_query(filters.regex(r"^watch_"))
 async def watch_online(client, query):
     """Generate streaming link for watch online"""
@@ -88,22 +87,13 @@ async def watch_online(client, query):
     try:
         file_name = file_data.get('file_name', 'Unknown')
         file_size = get_size(file_data.get('file_size', 0))
-        telegram_file_id = file_data.get('file_id', '')
         
         # Get bot info
         me = await client.get_me()
         bot_username = me.username
         
-        # ✅ Generate multiple streaming options
-        
-        # Option 1: Telegram Direct Link (MOST RELIABLE)
+        # Generate streaming link
         telegram_stream = f"https://t.me/{bot_username}?start=file_{file_id}"
-        
-        # Option 2: VLC Media Player Stream (for desktop users)
-        vlc_stream = f"tg://user?id={me.id}"
-        
-        # Option 3: Progressive download (stream while downloading)
-        progress_stream = telegram_stream
         
         message_text = f"""
 🎬 **Watch Online - Multiple Options**
@@ -154,3 +144,6 @@ Click link above and start playing
     except Exception as e:
         logger.error(f"Error: {e}")
         await query.answer("❌ Error generating stream!", show_alert=True)
+
+logger.info("✅ STREAM CALLBACKS LOADED - FAST DOWNLOAD & WATCH ONLINE!")
+                       
