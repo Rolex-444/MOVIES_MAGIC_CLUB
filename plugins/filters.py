@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.database import Database
 from database.verify import VerifyDB
 from bson import ObjectId
-from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT, AUTO_DELETE, AUTO_DELETE_TIME, REFER_POINT, YOUR_CHANNEL, YOUR_CHANNEL_LINK
+from info import ADMINS, VERIFY_TUTORIAL, CUSTOM_FILE_CAPTION, FREE_FILE_LIMIT, AUTO_DELETE, AUTO_DELETE_TIME, REFER_POINT
 from utils.verification import generate_verify_token, create_universal_shortlink
 from config import Config
 from utils.file_properties import get_size
