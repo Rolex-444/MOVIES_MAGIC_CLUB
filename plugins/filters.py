@@ -557,6 +557,64 @@ async def pagination_handler(client, query):
         logger.error(f"Pagination error: {e}")
         await query.answer("❌ Error loading page", show_alert=True)
 
+# ✅ NEW: Handle 3 download button options
+
+@Client.on_callback_query(filters.regex(r"^tg_"))
+async def telegram_download(client, query):
+    """Send file via normal Telegram (slow but free)"""
+    file_id = query.data.replace("tg_", "")
+    user_id = query.from_user.id
+    
+    logger.info(f"📱 Telegram file request from user {user_id}")
+    
+    try:
+        mongo_id = ObjectId(file_id)
+        file_data = await db.get_file(mongo_id)
+    except:
+        file_data = None
+    
+    if not file_data:
+        await query.answer("❌ File not found!", show_alert=True)
+        return
+    
+    telegram_file_id = file_data.get('file_id')
+    file_type = file_data.get('file_type', 'document')
+    caption = file_data.get('caption', file_data.get('file_name', ''))
+    
+    try:
+        if file_type == 'video':
+            await query.message.reply_video(telegram_file_id, caption=caption)
+        elif file_type == 'audio':
+            await query.message.reply_audio(telegram_file_id, caption=caption)
+        else:
+            await query.message.reply_document(telegram_file_id, caption=caption)
+        
+        await query.answer("📱 Sending file via Telegram...", show_alert=False)
+        logger.info(f"✅ Sent Telegram file to {user_id}")
+    except Exception as e:
+        logger.error(f"Error sending file: {e}")
+        await query.answer("❌ Error sending file!", show_alert=True)
+
+@Client.on_callback_query(filters.regex(r"^fast_"))
+async def fast_download(client, query):
+    """Fast download - for now, send message (will add later)"""
+    file_id = query.data.replace("fast_", "")
+    user_id = query.from_user.id
+    
+    logger.info(f"⚡ Fast download request from user {user_id}")
+    
+    await query.answer("⚡ Fast download coming soon! Use Telegram File for now.", show_alert=True)
+
+@Client.on_callback_query(filters.regex(r"^watch_"))
+async def watch_online(client, query):
+    """Watch online - for now, send message (will add later)"""
+    file_id = query.data.replace("watch_", "")
+    user_id = query.from_user.id
+    
+    logger.info(f"🎬 Watch online request from user {user_id}")
+    
+    await query.answer("🎬 Watch online coming soon! Use Telegram File for now.", show_alert=True)
+    
 # ✅ Make sure your file ends with these 3 callback handlers:
 
 @Client.on_callback_query(filters.regex(r"^close$"))
