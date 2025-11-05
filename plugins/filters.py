@@ -557,10 +557,13 @@ async def pagination_handler(client, query):
         logger.error(f"Pagination error: {e}")
         await query.answer("❌ Error loading page", show_alert=True)
 
-@Client.on_callback_query(filters.regex("^close$"))
+# ✅ Make sure your file ends with these 3 callback handlers:
+
+@Client.on_callback_query(filters.regex(r"^close$"))
 async def close_callback(client, query):
     """Handle close button"""
     await query.message.delete()
     await query.answer()
 
 logger.info("✅ FILTERS PLUGIN LOADED WITH 3-DOWNLOAD OPTIONS!")
+
