@@ -581,10 +581,9 @@ async def pagination_handler(client, query):
         await query.answer("❌ Error loading page", show_alert=True)
 
 # ✅ NEW: Handle 3 download button options
-
 @Client.on_callback_query(filters.regex(r"^tg_"))
 async def telegram_download(client, query):
-    """Send file via normal Telegram (slow but free)"""
+    """Send file via normal Telegram with better error handling"""
     file_id = query.data.replace("tg_", "")
     user_id = query.from_user.id
     
@@ -604,6 +603,12 @@ async def telegram_download(client, query):
     file_type = file_data.get('file_type', 'document')
     caption = file_data.get('caption', file_data.get('file_name', ''))
     
+    # ✅ Validate file_id
+    if not telegram_file_id or telegram_file_id == "":
+        await query.answer("❌ File ID is invalid!", show_alert=True)
+        logger.error(f"Invalid file_id for {file_id}")
+        return
+    
     try:
         if file_type == 'video':
             await query.message.reply_video(telegram_file_id, caption=caption)
@@ -612,27 +617,14 @@ async def telegram_download(client, query):
         else:
             await query.message.reply_document(telegram_file_id, caption=caption)
         
-        await query.answer("📱 Sending file via Telegram...", show_alert=False)
-        logger.info(f"✅ Sent Telegram file to {user_id}")
+        await query.answer("📱 Sent!", show_alert=False)
+        logger.info(f"✅ Sent file to {user_id}")
     except Exception as e:
-        logger.error(f"Error sending file: {e}")
-        await query.answer("❌ Error sending file!", show_alert=True)
-
-@Client.on_callback_query(filters.regex(r"^fast_"))
-async def fast_download(client, query):
-    """Fast download - coming soon"""
-    await query.answer("⚡ Fast download coming soon! Use Telegram File for now.", show_alert=True)
-
-@Client.on_callback_query(filters.regex(r"^watch_"))
-async def watch_online(client, query):
-    """Watch online - coming soon"""
-    await query.answer("🎬 Watch online coming soon! Use Telegram File for now.", show_alert=True)
-
-@Client.on_callback_query(filters.regex(r"^close$"))
-async def close_callback(client, query):
-    """Handle close button"""
-    await query.message.delete()
-    await query.answer()
-
-logger.info("✅ FILTERS PLUGIN LOADED WITH 3-DOWNLOAD OPTIONS AND CLICKABLE FILE BUTTONS!")
-                                     
+        logger.error(f"Error: {e}")
+        error_str = str(e)
+        
+        if "MEDIA_EMPTY" in error_str or "invalid" in error_str.lower():
+            await query.answer("❌ File ID expired! Admin needs to re-save.", show_alert=True)
+        else:
+            await query.answer("❌ Error sending file!", show_alert=True)
+    
