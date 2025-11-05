@@ -119,6 +119,11 @@ PAYMENT_CHANNEL_LINK = environ.get("PAYMENT_CHANNEL_LINK", "https://t.me/+heQIYv
 UPI_QR_CODE = environ.get("UPI_QR_CODE", "IMG_20251021_083257.jpg")
 UPI_ID = environ.get("UPI_ID", "sivaramanc49@okaxis")
 
+# Channel information
+YOUR_CHANNEL = environ.get("YOUR_CHANNEL", "@movies_magic_club3")
+YOUR_CHANNEL_LINK = environ.get("YOUR_CHANNEL_LINK", "https://t.me/movies_magic_club3")
+RARE_VIDEOS_LINK = environ.get("RARE_VIDEOS_LINK", "https://t.me/REAL_TERABOX_PRO_bot")
+
 # ============ FILE STREAMING SETTINGS ============
 
 # BIN_CHANNEL: Private channel to store files for streaming
