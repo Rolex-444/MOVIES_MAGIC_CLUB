@@ -35,7 +35,7 @@ async def batch_command(client, message):
 async def handle_batch(client, message, batch_id):
     try:
         first_id, last_id = map(int, batch_id.split('_'))
-        status = await message.reply("Sending files...", parse_mode="html")
+        status = await message.reply("Sending files...", parse_mode=enums.ParseMode.HTML)
         sent = 0
         for msg_id in range(first_id, last_id + 1):
             try:
