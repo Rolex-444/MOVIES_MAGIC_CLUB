@@ -118,3 +118,29 @@ PAYMENT_CHANNEL_LINK = environ.get("PAYMENT_CHANNEL_LINK", "https://t.me/+heQIYv
 # QR code image for UPI payments
 UPI_QR_CODE = environ.get("UPI_QR_CODE", "IMG_20251021_083257.jpg")
 UPI_ID = environ.get("UPI_ID", "sivaramanc49@okaxis")
+
+# ============ FILE STREAMING SETTINGS ============
+
+# BIN_CHANNEL: Private channel to store files for streaming
+BIN_CHANNEL = int(environ.get("BIN_CHANNEL", "0"))
+
+# Your Koyeb deployment URL
+URL = environ.get("URL", "")
+
+# Worker bots (for bandwidth multiplication)
+MULTI_TOKEN1 = environ.get("MULTI_TOKEN1", "")
+MULTI_TOKEN2 = environ.get("MULTI_TOKEN2", "")
+MULTI_TOKEN3 = environ.get("MULTI_TOKEN3", "")
+MULTI_TOKEN4 = environ.get("MULTI_TOKEN4", "")
+MULTI_TOKEN5 = environ.get("MULTI_TOKEN5", "")
+
+# Get all available tokens
+def get_all_tokens():
+    tokens = []
+    for i in range(1, 11):  # Support up to 10 worker bots
+        token = environ.get(f"MULTI_TOKEN{i}", "")
+        if token:
+            tokens.append(token)
+    return tokens if tokens else [BOT_TOKEN]
+
+ALL_TOKENS = get_all_tokens()
