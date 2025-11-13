@@ -1,52 +1,37 @@
-import asyncio
-import logging
-from aiohttp import web
-from pyrogram import Client, idle
-from info import API_ID, API_HASH, BOT_TOKEN
+# bot/main.py
+import logging, asyncio
+from pyrogram import Client, filters, idle
+from .config import settings
+from .handlers import start, group, inline, search, callbacks, admin
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+app = Client("movie-bot",
+             api_id=settings.API_ID,
+             api_hash=settings.API_HASH,
+             bot_token=settings.BOT_TOKEN,
+             workers=50,
+             sleep_threshold=2)
 
-# Pyrogram Client
-app = Client(
-    "MoviesBot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-    plugins=dict(root="plugins"),
-    workers=50
-)
+def register_handlers():
+    start.register(app)   # register /start first to avoid being shadowed [web:278]
+    group.register(app)
+    inline.register(app)
+    search.register(app)
+    callbacks.register(app)
+    admin.register(app)
 
-# Health check server for Koyeb
-async def health(request):
-    return web.Response(text="OK", status=200)
-
-async def start_health_server():
-    web_app = web.Application()
-    web_app.router.add_get('/', health)
-    web_app.router.add_get('/health', health)
-    runner = web.AppRunner(web_app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
-    await site.start()
-    logger.info("Health check server started on port 8080")
+    # Catch-all logger: remove after debugging
+    @app.on_message(filters.private | filters.group)
+    async def _debug_any(c, m):
+        print("Got message:", getattr(m.chat, "type", "?"), getattr(m, "text", None))  # [web:277]
 
 async def main():
-    # Start health check
-    await start_health_server()
-    
-    # Start bot
-    await app.start()
+    register_handlers()  # bind decorators to this Client instance before starting [web:306]
+    await app.start()    # start client before invoking any API like get_me [web:307]
     me = await app.get_me()
-    logger.info("MOVIES MAGIC CLUB Started ⚡")
-    logger.info(f"Bot Username: @{me.username}")
-    
-    # Keep running
-    await idle()
+    print(f"Bot online as @{me.username} (id={me.id})")  # confirms you’re DMing the correct bot [web:394]
+    await idle()         # keep process alive, dispatch handlers [web:401]
+    await app.stop()     # graceful shutdown [web:405]
 
 if __name__ == "__main__":
-    app.run(main())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    asyncio.run(main())  # correct event-loop management on Python 3.11+ [web:371]
